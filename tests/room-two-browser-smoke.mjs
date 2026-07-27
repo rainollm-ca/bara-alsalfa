@@ -39,6 +39,10 @@ async function stopServer() {
 }
 
 if (managedServer) await startServer();
+const healthResponse = await fetch(`${baseUrl}/api/health`);
+if (!healthResponse.ok || (await healthResponse.json()).status !== "healthy") {
+  throw new Error("Room database health preflight failed.");
+}
 const browser = await chromium.launch({ headless: true, executablePath });
 
 try {
@@ -82,6 +86,7 @@ try {
     if (stateText.includes(secret) || domText.includes(secret)) throw new Error("Credential leaked into visible state.");
   }
   console.log(JSON.stringify({
+    databaseHealth: true,
     hostCreatedFromUi: true,
     freshInviteContextJoined: true,
     synchronizedPlayers: 2,

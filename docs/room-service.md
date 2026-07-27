@@ -13,8 +13,9 @@ Room state is stored in SQLite and shared across Next.js workers and restarts.
 ## Coolify deployment
 
 The production image runs the Next.js standalone server, including the room API, as
-the unprivileged `nextjs` user (UID/GID 1001). It binds to `0.0.0.0:80` and includes
-an HTTP container healthcheck.
+the unprivileged `nextjs` user (UID/GID 1001). It binds to `0.0.0.0:80`. The
+container healthcheck calls `GET /api/health`, which opens the configured SQLite
+database and completes a rolled-back write transaction before reporting healthy.
 
 Configure the Coolify application with:
 
@@ -22,7 +23,7 @@ Configure the Coolify application with:
 - A persistent volume mounted at `/data`.
 - `ROOM_DB_PATH=/data/rooms.sqlite` (the image supplies this default explicitly).
 - `HOSTNAME=0.0.0.0` and `PORT=80` (also image defaults).
-- A healthcheck path of `/` on port `80`.
+- A healthcheck path of `/api/health` on port `80`.
 
 The `/data` mount must be writable by UID/GID `1001`. Mount the directory, not only
 the database file, because SQLite creates `rooms.sqlite-wal` and
@@ -34,16 +35,24 @@ contract above. No secrets are required by the image or room service.
 For a local production-equivalent check:
 
 ```sh
+set -eu
+
 docker build -t bara-party-platform:local .
 ROOM_DATA_DIR="$(mktemp -d)"
-docker run --name bara-party-platform-volume-permissions \
+ROOM_CONTAINER="bara-party-platform-check-$$"
+trap 'docker stop "$ROOM_CONTAINER" >/dev/null 2>&1 || true' EXIT INT TERM
+
+docker run --rm \
   -v "$ROOM_DATA_DIR:/data" \
   alpine:latest chown -R 1001:1001 /data
-docker run --name bara-party-platform-check \
-  -p 127.0.0.1:8080:80 \
+docker run --rm -d --name "$ROOM_CONTAINER" \
+  -p 127.0.0.1::80 \
   -v "$ROOM_DATA_DIR:/data" \
   bara-party-platform:local
+ROOM_ENDPOINT="http://$(docker port "$ROOM_CONTAINER" 80/tcp)"
+curl --fail "$ROOM_ENDPOINT/api/health"
 ```
 
-The temporary host directory is intentionally retained after the check so room
-persistence can be inspected across container restarts.
+The trap stops the uniquely named disposable container. The temporary host
+directory is intentionally retained after the check so room persistence can be
+inspected across container restarts.
