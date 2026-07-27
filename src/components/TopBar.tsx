@@ -28,10 +28,10 @@ export function TopBar({ locale, onLocaleChange, onHome, showBack }: TopBarProps
             <span>{locale === "ar" ? "كل الألعاب" : "All games"}</span>
           </button>
         )}
-        <div className="languageSwitch" aria-label={locale === "ar" ? "اللغة" : "Language"}>
+        <div className="languageSwitch" role="group" aria-label={locale === "ar" ? "اللغة" : "Language"}>
           <Languages size={15} aria-hidden="true" />
-          <button className={locale === "ar" ? "active" : ""} onClick={() => onLocaleChange("ar")}>ع</button>
-          <button className={locale === "en" ? "active" : ""} onClick={() => onLocaleChange("en")}>EN</button>
+          <button aria-pressed={locale === "ar"} className={locale === "ar" ? "active" : ""} onClick={() => onLocaleChange("ar")}>ع</button>
+          <button aria-pressed={locale === "en"} className={locale === "en" ? "active" : ""} onClick={() => onLocaleChange("en")}>EN</button>
         </div>
       </div>
     </header>

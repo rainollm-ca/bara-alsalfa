@@ -142,9 +142,16 @@ export function CategorySelector({ label, hint, locale, options, value, onChange
     <fieldset className="setupField categoryField">
       <legend>{label}</legend>
       {hint && <p className="fieldHint">{hint}</p>}
-      <div className="categories">
+      <div className="categories" role="radiogroup" aria-label={label}>
         {options.map((option) => (
-          <button type="button" key={option.id} className={value === option.id ? "category active" : "category"} onClick={() => onChange(option.id)}>
+          <button
+            type="button"
+            role="radio"
+            aria-checked={value === option.id}
+            key={option.id}
+            className={value === option.id ? "category active" : "category"}
+            onClick={() => onChange(option.id)}
+          >
             {option.emoji && <b>{option.emoji}</b>}
             <span>{option.title[locale]}</span>
             {value === option.id && <Check size={16} />}

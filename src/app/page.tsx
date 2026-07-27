@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-import { GameLibrary, readStoredLocale, writeStoredLocale } from "../components/GameLibrary";
+import { GameLibrary, readStoredLocale, syncDocumentLocale, writeStoredLocale } from "../components/GameLibrary";
 import { TopBar } from "../components/TopBar";
 import { OutOfLoop } from "../components/games/OutOfLoop";
 import type { GameId, PlayMode } from "../games/types";
@@ -14,14 +14,19 @@ export default function Home() {
   const [mode, setMode] = useState<PlayMode>("local");
   const [activeGame, setActiveGame] = useState<GameId | null>(null);
 
-  useEffect(() => setLocale(readStoredLocale(window.localStorage)), []);
+  useEffect(() => {
+    const storedLocale = readStoredLocale(window.localStorage);
+    setLocale(storedLocale);
+    syncDocumentLocale(storedLocale, document.documentElement);
+  }, []);
 
   function changeLocale(nextLocale: Locale) {
     setLocale(nextLocale);
     writeStoredLocale(nextLocale, window.localStorage);
+    syncDocumentLocale(nextLocale, document.documentElement);
   }
 
-  const view = resolveGameView(activeGame);
+  const view = resolveGameView(activeGame, mode);
 
   return (
     <main className="shell" dir={locale === "ar" ? "rtl" : "ltr"}>
@@ -43,6 +48,12 @@ export default function Home() {
           />
         ) : view === "out-of-loop" ? (
           <OutOfLoop locale={locale} />
+        ) : view === "room-unavailable" ? (
+          <section className="comingSoon roomUnavailable">
+            <span aria-hidden="true">🔗</span>
+            <h1>{locale === "ar" ? "الغرف الجماعية قريباً" : "Group rooms are coming soon"}</h1>
+            <p>{locale === "ar" ? "وضع الغرفة لن يشغّل لعبة الجهاز الواحد. اختاروا جهاز واحد للعب الآن." : "Room mode will never start one-device gameplay. Choose One device to play now."}</p>
+          </section>
         ) : (
           <section className="comingSoon">
             <span aria-hidden="true">🎲</span>

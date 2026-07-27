@@ -37,6 +37,7 @@ const libraryCopy = {
 
 type StorageReader = Pick<Storage, "getItem">;
 type StorageWriter = Pick<Storage, "setItem">;
+type DocumentRoot = Pick<HTMLElement, "lang" | "dir">;
 
 export function getLibraryCopy(locale: Locale) {
   return libraryCopy[locale];
@@ -56,6 +57,11 @@ export function readStoredLocale(storage?: StorageReader): Locale {
 
 export function writeStoredLocale(locale: Locale, storage?: StorageWriter) {
   storage?.setItem(LOCALE_KEY, locale);
+}
+
+export function syncDocumentLocale(locale: Locale, root: DocumentRoot) {
+  root.lang = locale;
+  root.dir = locale === "ar" ? "rtl" : "ltr";
 }
 
 type GameLibraryProps = {

@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 import {
   formatPlayerRange,
   getLibraryCopy,
   readStoredLocale,
+  syncDocumentLocale,
   writeStoredLocale,
 } from "../src/components/GameLibrary";
 import {
@@ -15,9 +18,10 @@ import { resolveGameView } from "../src/lib/ui-state";
 
 describe("game library UI state", () => {
   it("coordinates library, playable, and upcoming game views", () => {
-    expect(resolveGameView(null)).toBe("library");
-    expect(resolveGameView("out-of-loop")).toBe("out-of-loop");
-    expect(resolveGameView("charades")).toBe("unavailable");
+    expect(resolveGameView(null, "local")).toBe("library");
+    expect(resolveGameView("out-of-loop", "local")).toBe("out-of-loop");
+    expect(resolveGameView("charades", "local")).toBe("unavailable");
+    expect(resolveGameView("out-of-loop", "room")).toBe("room-unavailable");
   });
 
   it("provides localized library labels", () => {
@@ -51,6 +55,25 @@ describe("game library UI state", () => {
     expect(readStoredLocale(storage)).toBe("en");
     values.set("bara-locale", "fr");
     expect(readStoredLocale(storage)).toBe("ar");
+  });
+
+  it("synchronizes document language and direction", () => {
+    const root = { lang: "", dir: "" };
+    syncDocumentLocale("en", root);
+    expect(root).toEqual({ lang: "en", dir: "ltr" });
+    syncDocumentLocale("ar", root);
+    expect(root).toEqual({ lang: "ar", dir: "rtl" });
+  });
+
+  it("exposes selected semantics for setup and language controls", () => {
+    const setupSource = readFileSync(resolve("src/components/SetupShell.tsx"), "utf8");
+    const topBarSource = readFileSync(resolve("src/components/TopBar.tsx"), "utf8");
+
+    expect(setupSource).toContain('role="radiogroup"');
+    expect(setupSource).toContain('role="radio"');
+    expect(setupSource).toContain("aria-checked=");
+    expect(topBarSource).toContain('role="group"');
+    expect(topBarSource).toContain("aria-pressed=");
   });
 });
 
