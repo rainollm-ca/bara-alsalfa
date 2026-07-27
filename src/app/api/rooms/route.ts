@@ -1,5 +1,6 @@
 import {
   errorResponse,
+  clientIdentity,
   HttpError,
   isGameId,
   isLocale,
@@ -16,8 +17,7 @@ export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
   try {
-    const ip = (request.headers.get("x-forwarded-for")?.split(",")[0] ??
-      request.headers.get("x-real-ip") ?? "unknown").trim();
+    const ip = clientIdentity(request);
     if (!roomRepository().consumeCreate(ip)) {
       throw new HttpError(
         429,

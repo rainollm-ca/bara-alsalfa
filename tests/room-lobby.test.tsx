@@ -120,4 +120,66 @@ describe("RoomLobby", () => {
     expect(document.activeElement).toBe(heading);
     expect(screen.getByRole("status")).toBeTruthy();
   });
+
+  it("aborts auto-reconnect and ignores its stale response after API changes", async () => {
+    const storedValues = new Map<string, string>();
+    Object.defineProperty(window, "localStorage", {
+      configurable: true,
+      value: {
+        getItem: (key: string) => storedValues.get(key) ?? null,
+        setItem: (key: string, value: string) => storedValues.set(key, value),
+        removeItem: (key: string) => storedValues.delete(key),
+      },
+    });
+    window.history.replaceState(null, "", "/?room=ABC123");
+    window.localStorage.setItem("bara-room:ABC123", JSON.stringify({
+      code: "ABC123",
+      playerToken: "stored-player-token",
+      name: "Stored",
+    }));
+    let resolveOld!: (value: unknown) => void;
+    let oldSignal!: AbortSignal;
+    const oldJoin = vi.fn((_code, _input, signal: AbortSignal) =>
+      new Promise((resolve) => {
+        resolveOld = resolve;
+        oldSignal = signal;
+        expect(signal).toBeInstanceOf(AbortSignal);
+      }));
+    const nextApi = { join: vi.fn().mockRejectedValue(new RoomClientError("ROOM_NOT_FOUND", "gone", 404)) };
+    const view = render(<RoomLobby locale="en" initialCode="ABC123" onExit={vi.fn()} api={{ join: oldJoin } as never} />);
+    expect(oldJoin).toHaveBeenCalledTimes(1);
+    view.rerender(<RoomLobby locale="en" initialCode="ABC123" onExit={vi.fn()} api={nextApi as never} />);
+    expect(oldSignal.aborted).toBe(true);
+    resolveOld({
+      playerToken: "stored-player-token",
+      room: {
+        code: "ABC123",
+        selectedGame: "charades",
+        players: [{ id: "old", name: "Stale Player", isHost: false }],
+        self: { id: "old", name: "Stale Player", isHost: false },
+      },
+    });
+    expect(await screen.findByRole("heading", { name: "Room unavailable" })).toBeTruthy();
+    expect(screen.queryByText("Stale Player")).toBeNull();
+  });
+
+  it("aborts an in-flight auto-reconnect when unmounted", () => {
+    const storedValues = new Map([["bara-room:ABC123", JSON.stringify({
+      code: "ABC123", playerToken: "stored-player-token", name: "Stored",
+    })]]);
+    Object.defineProperty(window, "localStorage", {
+      configurable: true,
+      value: { getItem: (key: string) => storedValues.get(key) ?? null },
+    });
+    let signal!: AbortSignal;
+    const api = {
+      join: vi.fn((_code, _input, nextSignal: AbortSignal) => {
+        signal = nextSignal;
+        return new Promise(() => {});
+      }),
+    };
+    const view = render(<RoomLobby locale="en" initialCode="ABC123" onExit={vi.fn()} api={api as never} />);
+    view.unmount();
+    expect(signal.aborted).toBe(true);
+  });
 });

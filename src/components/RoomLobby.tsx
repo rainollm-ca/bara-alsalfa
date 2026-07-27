@@ -85,18 +85,28 @@ export function RoomLobby({ locale, gameId, initialCode, onExit, api: suppliedAp
       setTab("join");
       return;
     }
+    const generation = ++requestGeneration.current;
+    activeRequest.current?.abort();
+    const controller = new AbortController();
+    activeRequest.current = controller;
     setName(stored.name);
-    void api.join(linkedCode, { name: stored.name, playerToken: stored.playerToken })
+    void api.join(linkedCode, { name: stored.name, playerToken: stored.playerToken }, controller.signal)
       .then((result) => {
+        if (generation !== requestGeneration.current || controller.signal.aborted) return;
         setSession(stored);
         setRoom(result.room);
       })
       .catch((reason) => {
+        if (generation !== requestGeneration.current || controller.signal.aborted) return;
         setSession(null);
         setRoom(null);
         setRecovery(reason instanceof RoomClientError &&
           (reason.code === "ROOM_EXPIRED" || reason.code === "ROOM_NOT_FOUND") ? "expired" : "failed");
       });
+    return () => {
+      if (generation === requestGeneration.current) requestGeneration.current += 1;
+      controller.abort();
+    };
   }, [api, initialCode]);
 
   useEffect(() => {

@@ -1,6 +1,7 @@
 import { GAME_CATALOG } from "../games/catalog";
 import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { isIP } from "node:net";
 import type { GameId, Locale } from "../games/types";
 import { ROOM_CONTRACT_VERSION, type RoomAction } from "./contracts";
 import { toPlayerView } from "./playerView";
@@ -24,6 +25,22 @@ export function roomRepository() {
 
 export function resetRoomRepositoryForTests(next = new RoomRepository()) {
   repository = next;
+}
+
+export function clientIdentity(
+  request: Request,
+  trustProxy = process.env.ROOM_TRUST_PROXY === "1",
+): string {
+  if (!trustProxy) return "anonymous";
+  const forwarded = request.headers.get("x-forwarded-for");
+  if (!forwarded || forwarded.includes(",") || !isIP(forwarded.trim())) {
+    throw new HttpError(
+      400,
+      "INVALID_PROXY_HEADER",
+      "Trusted proxy mode requires one valid X-Forwarded-For IP address.",
+    );
+  }
+  return forwarded.trim().toLowerCase();
 }
 
 type JsonObject = Record<string, unknown>;

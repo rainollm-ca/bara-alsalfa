@@ -4,7 +4,7 @@ import { POST as createRoom } from "../src/app/api/rooms/route";
 import { POST as joinRoom } from "../src/app/api/rooms/[code]/join/route";
 import { GET as getRoomState } from "../src/app/api/rooms/[code]/state/route";
 import { POST as roomAction } from "../src/app/api/rooms/[code]/action/route";
-import { resetRoomRepositoryForTests } from "../src/rooms/server";
+import { clientIdentity, resetRoomRepositoryForTests } from "../src/rooms/server";
 import { RoomRepository } from "../src/rooms/repository";
 
 const context = (code: string) => ({ params: Promise.resolve({ code }) });
@@ -93,21 +93,36 @@ describe("room HTTP API", () => {
     expect(tooLarge.status).toBe(413);
   });
 
-  it("rate limits room creation by client IP", async () => {
+  it("uses one non-spoofable default bucket despite rotating forwarded headers", async () => {
     for (let index = 0; index < 5; index += 1) {
       expect((await createRoom(new Request("http://localhost/api/rooms", {
         method: "POST",
-        headers: { "content-type": "application/json", "x-forwarded-for": "203.0.113.7" },
+        headers: { "content-type": "application/json", "x-forwarded-for": `203.0.113.${index}` },
         body: JSON.stringify({ contractVersion: 1, hostName: `Host ${index}` }),
       }))).status).toBe(201);
     }
     const limited = await createRoom(new Request("http://localhost/api/rooms", {
       method: "POST",
-      headers: { "content-type": "application/json", "x-forwarded-for": "203.0.113.7" },
+      headers: { "content-type": "application/json", "x-forwarded-for": "198.51.100.99" },
       body: JSON.stringify({ contractVersion: 1, hostName: "One too many" }),
     }));
     expect(limited.status).toBe(429);
     expect((await limited.json()).error.code).toBe("RATE_LIMITED");
+  });
+
+  it("accepts only one canonical IP when trusted proxy mode is explicit", () => {
+    expect(clientIdentity(new Request("http://localhost", {
+      headers: { "x-forwarded-for": "2001:DB8::1" },
+    }), true)).toBe("2001:db8::1");
+    expect(clientIdentity(new Request("http://localhost", {
+      headers: { "x-forwarded-for": "203.0.113.9" },
+    }), false)).toBe("anonymous");
+    expect(() => clientIdentity(new Request("http://localhost", {
+      headers: { "x-forwarded-for": "203.0.113.9, 10.0.0.2" },
+    }), true)).toThrowError(expect.objectContaining({ code: "INVALID_PROXY_HEADER" }));
+    expect(() => clientIdentity(new Request("http://localhost", {
+      headers: { "x-forwarded-for": "not-an-ip" },
+    }), true)).toThrowError(expect.objectContaining({ code: "INVALID_PROXY_HEADER" }));
   });
 
   it("rejects invalid codes and requires a valid player bearer token for state", async () => {
