@@ -20,7 +20,10 @@ describe("game library UI state", () => {
   it("coordinates library, playable, and upcoming game views", () => {
     expect(resolveGameView(null, "local")).toBe("library");
     expect(resolveGameView("out-of-loop", "local")).toBe("out-of-loop");
-    expect(resolveGameView("charades", "local")).toBe("unavailable");
+    expect(resolveGameView("charades", "local")).toBe("charades");
+    expect(resolveGameView("forbidden-word", "local")).toBe("forbidden-word");
+    expect(resolveGameView("who-am-i", "local")).toBe("who-am-i");
+    expect(resolveGameView("rapid-fire", "local")).toBe("rapid-fire");
     expect(resolveGameView("out-of-loop", "room")).toBe("room-unavailable");
   });
 

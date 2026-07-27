@@ -6,6 +6,10 @@ import { GameLibrary, readStoredLocale, syncDocumentLocale, writeStoredLocale } 
 import { TopBar } from "../components/TopBar";
 import { OutOfLoop } from "../components/games/OutOfLoop";
 import { CategoryChallenge } from "../components/games/CategoryChallenge";
+import { Charades } from "../components/games/Charades";
+import { ForbiddenWord } from "../components/games/ForbiddenWord";
+import { RapidFire } from "../components/games/RapidFire";
+import { WhoAmI } from "../components/games/WhoAmI";
 import type { GameId, PlayMode } from "../games/types";
 import type { Locale } from "../lib/game";
 import { resolveGameView } from "../lib/ui-state";
@@ -51,6 +55,14 @@ export default function Home() {
           <OutOfLoop locale={locale} />
         ) : view === "category-challenge" ? (
           <CategoryChallenge locale={locale} onExit={() => setActiveGame(null)} />
+        ) : view === "charades" ? (
+          <Charades locale={locale} />
+        ) : view === "forbidden-word" ? (
+          <ForbiddenWord locale={locale} />
+        ) : view === "who-am-i" ? (
+          <WhoAmI locale={locale} />
+        ) : view === "rapid-fire" ? (
+          <RapidFire locale={locale} />
         ) : view === "room-unavailable" ? (
           <section className="comingSoon roomUnavailable">
             <span aria-hidden="true">🔗</span>

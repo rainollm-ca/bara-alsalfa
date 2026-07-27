@@ -106,6 +106,7 @@ function NamesField(props: NamesFieldProps) {
         <div className="addRow">
           <input
             id={props.id}
+            aria-label={props.label}
             value={props.value}
             onChange={(event) => props.onValueChange(event.target.value)}
             onKeyDown={(event) => event.key === "Enter" && (event.preventDefault(), props.onAdd())}

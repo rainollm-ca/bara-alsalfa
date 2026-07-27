@@ -193,6 +193,30 @@ footer { color:#8c918d; font-size:12px; padding:16px; z-index:1; }
 .resultScores { width:min(100%,420px); display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:26px; }
 .resultScores b { display:grid; gap:4px; border:1px solid var(--line); border-radius:16px; padding:15px; background:white; }
 .resultScores span { color:var(--green); font-size:30px; }
+.actionGame { min-height:600px; text-align:center; }
+.actionGame .roundBadge { display:inline-flex; border-radius:999px; padding:8px 16px; background:#eaf2e8; color:var(--green); font-weight:900; }
+.actionPrompt { max-width:720px; min-height:120px; display:grid; place-items:center; margin:26px auto; font-size:clamp(30px,7vw,54px); line-height:1.25; }
+.timedRound { display:grid; gap:18px; }
+.roundTimer { width:118px; height:118px; display:grid; place-content:center; margin:auto; border:8px solid #e5dccf; border-radius:50%; background:white; }
+.roundTimer strong { color:var(--terracotta); font-size:42px; line-height:1; }
+.roundTimer span { color:var(--muted); font-size:12px; font-weight:800; }
+.timerControls,.roundActions { display:flex; justify-content:center; gap:10px; }
+.timerControls button,.roundActions button { min-width:130px; min-height:50px; border:0; border-radius:14px; padding:10px 17px; font-weight:900; }
+.roundActions .success { background:var(--green); color:white; }
+.roundActions .danger { background:var(--terracotta); color:white; }
+.roundActions .secondary,.timerControls .secondary { border:1px solid var(--line); background:white; color:var(--ink); }
+.roundActions button:disabled { opacity:.38; }
+.roundSummary { font-weight:900; }
+.forbiddenWords { display:flex; flex-wrap:wrap; justify-content:center; gap:8px; margin:8px 0 20px; }
+.forbiddenWords span { border-radius:999px; padding:8px 13px; background:#f2dcd2; color:#913f2d; font-weight:900; }
+.finalScores { min-height:560px; text-align:center; }
+.finalScores>p { width:min(100%,430px); display:flex; justify-content:space-between; margin:9px auto; border:1px solid var(--line); border-radius:15px; padding:14px 18px; background:white; }
+.finalScores>p b { color:var(--green); font-size:24px; }
+.privateReveal,.identityPlay { min-height:580px; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; }
+.privateReveal .secretCard,.identityCard { width:min(100%,520px); min-height:250px; display:grid; place-items:center; margin:22px 0; border:2px dashed var(--terracotta); border-radius:25px; background:#fff5e9; }
+.identityCard h2 { color:var(--green); font-size:clamp(38px,9vw,68px); }
+.identityRoster { display:flex; flex-wrap:wrap; justify-content:center; gap:9px; }
+.identityRoster span { border-radius:999px; padding:9px 14px; background:#eaf2e8; font-weight:900; }
 @media(max-width:560px) {
   .shell { padding:0; }
   .appCard { min-height:100vh; border:0; border-radius:0; box-shadow:none; }
@@ -230,6 +254,10 @@ footer { color:#8c918d; font-size:12px; padding:16px; z-index:1; }
   .scoreButtons b { grid-column:1/-1; }
   .players,.suspects { grid-template-columns:repeat(3,1fr); }
   .playerChip { padding:7px 6px; gap:5px; }
+  .actionGame { padding-inline:16px; }
+  .roundActions,.timerControls { display:grid; grid-template-columns:1fr 1fr; }
+  .timerControls button:only-child { grid-column:1/-1; }
+  .roundActions button { min-width:0; }
   .avatar { width:25px; height:25px; }
   footer { display:none; }
 }
