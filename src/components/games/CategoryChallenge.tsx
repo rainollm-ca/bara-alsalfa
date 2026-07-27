@@ -150,13 +150,22 @@ export function categoryChallengeWinner(scores: Record<TeamId, number>): TeamId 
 type Props = {
   locale: Locale;
   onExit: () => void;
+  initialSession?: Readonly<{
+    state: CategoryChallengeState;
+    board: CategoryChallengeBoard;
+  }>;
 };
 
-export function CategoryChallenge({ locale, onExit }: Props) {
-  const [state, setState] = useState(createCategoryChallengeState);
-  const [board, setBoard] = useState<CategoryChallengeBoard | null>(null);
+export function CategoryChallenge({ locale, onExit, initialSession }: Props) {
+  const [state, setState] = useState<CategoryChallengeState>(
+    () => initialSession?.state ?? createCategoryChallengeState(),
+  );
+  const [board, setBoard] = useState<CategoryChallengeBoard | null>(
+    () => initialSession?.board ?? null,
+  );
   const [now, setNow] = useState(0);
   const dialogTitleRef = useRef<HTMLHeadingElement>(null);
+  const answerHeadingRef = useRef<HTMLHeadingElement>(null);
   const boardRef = useRef<HTMLDivElement>(null);
   const triggeringCellRef = useRef<HTMLButtonElement | null>(null);
 
@@ -195,6 +204,10 @@ export function CategoryChallenge({ locale, onExit }: Props) {
     }
     return () => boardElement?.removeAttribute("inert");
   }, [state.activeQuestion?.questionId]);
+
+  useEffect(() => {
+    if (state.activeQuestion?.revealed) answerHeadingRef.current?.focus();
+  }, [state.activeQuestion?.revealed]);
 
   const activeBoardQuestion = useMemo(() => {
     if (!board || !state.activeQuestion) return null;
@@ -453,7 +466,7 @@ export function CategoryChallenge({ locale, onExit }: Props) {
             )}
             {state.activeQuestion.revealed ? (
               <>
-                <p className="answerLabel">{text.answer}</p>
+                <h3 className="answerLabel" ref={answerHeadingRef} tabIndex={-1}>{text.answer}</h3>
                 <p className="answerText">{activeBoardQuestion.question.answer[locale]}</p>
                 <div className="scoreButtons">
                   {(["teamOne", "teamTwo"] as const).map((team) => (
