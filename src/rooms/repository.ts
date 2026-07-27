@@ -8,7 +8,6 @@ import {
 import {
   ROOM_CONTRACT_VERSION,
   type CreateRoomInput,
-  type GameRoomAction,
   type JoinRoomInput,
   type JsonValue,
   type Room,
@@ -16,6 +15,7 @@ import {
   type RoomEvent,
   type RoomPlayer,
 } from "./contracts";
+import { initializeGame, reduceGame } from "./gameplay";
 
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const CODE_PATTERN = /^[A-Z0-9]{6}$/;
@@ -34,7 +34,8 @@ export type RoomErrorCode =
   | "INVALID_ACTION"
   | "CODE_GENERATION_FAILED"
   | "TOKEN_GENERATION_FAILED"
-  | "ROOM_CAPACITY";
+  | "ROOM_CAPACITY"
+  | "PLAYER_ONLY";
 
 export class RoomError extends Error {
   constructor(
@@ -402,6 +403,7 @@ export class RoomRepository {
         }
         return this.update(room, {
           status: "playing",
+          gameState: initializeGame(room),
           events: [
             ...room.events,
             { type: "room/status-changed", status: "playing", at: now },
@@ -431,14 +433,21 @@ export class RoomRepository {
           ],
         });
       }
-      case "game/action":
-        if (!actor) {
-          throw new RoomError(
-            "INVALID_TOKEN",
-            "Game actions require a player token.",
-          );
-        }
-        return this.applyGameAction(room, actor, action, now);
+      default:
+        return this.update(room, {
+          gameState: reduceGame(
+            room,
+            actor?.id ?? (isHost ? room.hostPlayerId : undefined),
+            isHost,
+            action,
+          ),
+          events: [...room.events, {
+            type: "game/action-applied",
+            playerId: actor?.id ?? room.hostPlayerId,
+            actionType: action.type,
+            at: now,
+          }],
+        });
     }
   }
 
@@ -479,36 +488,6 @@ export class RoomRepository {
     return this.storage.transaction(() =>
       this.storage.consumeCreate?.(ip, this.clock(), limit, windowMs) ?? true,
     );
-  }
-
-  private applyGameAction(
-    room: Room,
-    actor: RoomPlayer,
-    action: GameRoomAction,
-    now: number,
-  ): Room {
-    if (room.status !== "playing") {
-      return this.invalidAction("Game actions require a started room.");
-    }
-    if (!action.actionType.trim()) {
-      return this.invalidAction("Game action type is required.");
-    }
-    return this.update(room, {
-      gameState: {
-        revision: (room.gameState?.revision ?? 0) + 1,
-        publicData:
-          action.payload === undefined ? null : copyJson(action.payload),
-      },
-      events: [
-        ...room.events,
-        {
-          type: "game/action-applied",
-          playerId: actor.id,
-          actionType: action.actionType,
-          at: now,
-        },
-      ],
-    });
   }
 
   private update(room: Room, patch: Partial<Room>): Room {
@@ -607,14 +586,15 @@ export class RoomRepository {
           return this.invalidAction("Remove-player action requires a player ID.");
         }
         return;
-      case "game/action":
-        if (
-          !("actionType" in action) ||
-          typeof action.actionType !== "string" ||
-          !action.actionType.trim()
-        ) {
-          return this.invalidAction("Game action type is required.");
-        }
+      case "category/score":
+      case "charades/score":
+      case "forbidden-word/score":
+      case "rapid-fire/score":
+      case "out-of-loop/vote":
+      case "most-likely/vote":
+      case "who-am-i/guess":
+      case "two-truths/submit":
+      case "two-truths/vote":
         return;
       default:
         return this.invalidAction("Unknown room action.");

@@ -51,7 +51,7 @@ try {
   await host.goto(baseUrl);
   await host.getByRole("button", { name: "EN" }).click();
   await host.getByRole("button", { name: /Group room/ }).click();
-  await host.locator(".gameTile").filter({ hasText: "Charades" }).getByRole("button", { name: "Play now" }).click();
+  await host.locator(".gameTile").filter({ hasText: "Category Challenge" }).getByRole("button", { name: "Play now" }).click();
   await host.getByLabel("Your name").fill("Smoke Host");
   await host.getByRole("button", { name: "Create room" }).click();
   await host.locator(".roomCode").waitFor();
@@ -72,8 +72,15 @@ try {
   await guest.getByText("Smoke Host").waitFor();
   await host.getByText("Smoke Guest").waitFor();
   await host.getByRole("button", { name: "Start game" }).click();
-  await host.locator('[data-room-status="playing"]').waitFor();
-  await guest.locator('[data-room-status="playing"]').waitFor({ timeout: 6_000 });
+  await host.locator('[data-game-id="category-challenge"][data-game-phase="play"]').waitFor();
+  await guest.locator('[data-game-id="category-challenge"][data-game-phase="play"]').waitFor({ timeout: 6_000 });
+  await host.getByRole("button", { name: "Correct" }).click();
+  await host.locator('[data-game-phase="result"]').waitFor();
+  await guest.locator('[data-game-phase="result"]').waitFor({ timeout: 6_000 });
+  if (!(await guest.locator(".roomScores").innerText()).includes("Smoke Host: 1") ||
+      !(await guest.locator(".roomAnswer").isVisible())) {
+    throw new Error("Authoritative category answer/score did not synchronize.");
+  }
 
   const session = await host.evaluate(() => {
     const key = Object.keys(localStorage).find((value) => value.startsWith("bara-room:"));
@@ -85,12 +92,40 @@ try {
   for (const secret of [session.playerToken, session.hostToken]) {
     if (stateText.includes(secret) || domText.includes(secret)) throw new Error("Credential leaked into visible state.");
   }
+  const privacy = await host.evaluate(async () => {
+    const post = (path, body, token) => fetch(path, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify(body),
+    }).then((response) => response.json());
+    const created = await post("/api/rooms", { contractVersion: 1, hostName: "Private Host", gameId: "out-of-loop" });
+    const guest = await post(`/api/rooms/${created.code}/join`, { contractVersion: 1, name: "Private Guest" });
+    const outsider = await post(`/api/rooms/${created.code}/join`, { contractVersion: 1, name: "Private Outsider" });
+    await post(`/api/rooms/${created.code}/action`, { contractVersion: 1, action: { type: "lobby/start" } }, created.hostToken);
+    const state = (token) => fetch(`/api/rooms/${created.code}/state`, {
+      headers: { authorization: `Bearer ${token}` },
+    }).then((response) => response.json());
+    const [hostState, guestState, outsiderState] = await Promise.all([
+      state(created.playerToken), state(guest.playerToken), state(outsider.playerToken),
+    ]);
+    const outsiderText = JSON.stringify(outsiderState);
+    const publicText = JSON.stringify(hostState.room.gameState.publicData);
+    return {
+      insidersHaveWord: Boolean(hostState.room.gameState.privateData.word && guestState.room.gameState.privateData.word),
+      outsiderHasNoWord: outsiderState.room.gameState.privateData.role === "outsider" && !outsiderState.room.gameState.privateData.word,
+      publicDoesNotRevealOutsider: !publicText.includes("outsiderPlayerId"),
+      outsiderDoesNotReceiveWord: !outsiderText.includes("Damascus"),
+    };
+  });
+  if (Object.values(privacy).some((value) => !value)) throw new Error("Out of Loop privacy projection failed.");
   console.log(JSON.stringify({
     databaseHealth: true,
     hostCreatedFromUi: true,
     freshInviteContextJoined: true,
     synchronizedPlayers: 2,
-    synchronizedStatus: "playing",
+    synchronizedStatus: "round-result",
+    authoritativeCategoryRound: true,
+    outOfLoopPrivacy: privacy,
     inviteUrlRoutedAtRoot: true,
     persistedAcrossServerRestart: managedServer || Boolean(restartContainer),
     credentialLeak: false,

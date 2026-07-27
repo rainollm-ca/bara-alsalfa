@@ -9,6 +9,8 @@ Room state is stored in SQLite and shared across Next.js workers and restarts.
 - SQLite uses WAL mode, a 5-second busy timeout, and immediate transactions for room mutations.
 - Deployments should preserve the database file and its adjacent WAL/SHM files by mounting the containing directory.
 - The service caps active rooms at 10,000, players at 12 per room, events at 100 per room, and room creation at five per client IP per minute.
+- Multiplayer game state is initialized and reduced on the server. Clients send only discriminated commands for the selected game; they cannot replace public state or submit score deltas.
+- Private role, identity, lie, and vote data stays in per-player/server-only state and is projected through `toPlayerView`.
 
 ## Coolify deployment
 

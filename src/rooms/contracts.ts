@@ -95,11 +95,20 @@ export type HostRoomAction =
   | Readonly<{ type: "lobby/return" }>
   | Readonly<{ type: "lobby/remove-player"; playerId: string }>;
 
-export type GameRoomAction = Readonly<{
-  type: "game/action";
-  actionType: string;
-  payload?: JsonValue;
-}>;
+export type GameRoomAction =
+  | Readonly<{ type: "category/score"; correctPlayerId: string | null }>
+  | Readonly<{ type: "charades/score"; correct: boolean }>
+  | Readonly<{ type: "forbidden-word/score"; correct: boolean }>
+  | Readonly<{ type: "rapid-fire/score"; correct: boolean }>
+  | Readonly<{ type: "out-of-loop/vote"; playerId: string }>
+  | Readonly<{ type: "most-likely/vote"; playerId: string }>
+  | Readonly<{ type: "who-am-i/guess"; correct: boolean }>
+  | Readonly<{
+      type: "two-truths/submit";
+      statements: readonly [string, string, string];
+      lieIndex: 0 | 1 | 2;
+    }>
+  | Readonly<{ type: "two-truths/vote"; index: 0 | 1 | 2 }>;
 
 export type RoomAction = HostRoomAction | GameRoomAction;
 

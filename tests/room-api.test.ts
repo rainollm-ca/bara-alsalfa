@@ -280,4 +280,54 @@ describe("room HTTP API", () => {
     expect(guestPayload).not.toContain("host-private-value");
     expect(hostPayload + guestPayload).not.toContain(created.hostToken);
   });
+
+  it("rejects wrong-game commands and forged authoritative score fields over HTTP", async () => {
+    const created = await (await createRoom(jsonRequest("http://localhost/api/rooms", {
+      contractVersion: 1, hostName: "Host", gameId: "charades",
+    }))).json();
+    for (const name of ["Guest 1", "Guest 2", "Guest 3"]) {
+      await joinRoom(jsonRequest(`http://localhost/api/rooms/${created.code}/join`, {
+        contractVersion: 1, name,
+      }), context(created.code));
+    }
+    await roomAction(jsonRequest(`http://localhost/api/rooms/${created.code}/action`, {
+      contractVersion: 1, action: { type: "lobby/start" },
+    }, created.hostToken), context(created.code));
+    const wrongGame = await roomAction(jsonRequest(`http://localhost/api/rooms/${created.code}/action`, {
+      contractVersion: 1, action: { type: "rapid-fire/score", correct: true },
+    }, created.hostToken), context(created.code));
+    expect(wrongGame.status).toBe(422);
+    const forged = await roomAction(jsonRequest(`http://localhost/api/rooms/${created.code}/action`, {
+      contractVersion: 1, action: { type: "charades/score", correct: true, score: 999, publicData: { won: true } },
+    }, created.hostToken), context(created.code));
+    expect(forged.status).toBe(422);
+  });
+
+  it("never leaks the Out of Loop outsider or word to the wrong player before reveal", async () => {
+    const created = await (await createRoom(jsonRequest("http://localhost/api/rooms", {
+      contractVersion: 1, hostName: "Host", gameId: "out-of-loop",
+    }))).json();
+    const guest = await (await joinRoom(jsonRequest(`http://localhost/api/rooms/${created.code}/join`, {
+      contractVersion: 1, name: "Guest",
+    }), context(created.code))).json();
+    const outsider = await (await joinRoom(jsonRequest(`http://localhost/api/rooms/${created.code}/join`, {
+      contractVersion: 1, name: "Outsider",
+    }), context(created.code))).json();
+    await roomAction(jsonRequest(`http://localhost/api/rooms/${created.code}/action`, {
+      contractVersion: 1, action: { type: "lobby/start" },
+    }, created.hostToken), context(created.code));
+    const view = async (token: string) => (await getRoomState(new Request(
+      `http://localhost/api/rooms/${created.code}/state`,
+      { headers: { authorization: `Bearer ${token}` } },
+    ), context(created.code))).json();
+    const hostView = await view(created.playerToken);
+    const guestView = await view(guest.playerToken);
+    const outsiderView = await view(outsider.playerToken);
+    expect(hostView.room.gameState.privateData).toMatchObject({ role: "insider" });
+    expect(guestView.room.gameState.privateData).toMatchObject({ role: "insider" });
+    expect(outsiderView.room.gameState.privateData).toEqual({ role: "outsider" });
+    expect(JSON.stringify(outsiderView)).not.toContain("Damascus");
+    expect(JSON.stringify(hostView.room.gameState.publicData)).not.toContain("outsider");
+    expect(JSON.stringify([hostView, guestView, outsiderView])).not.toContain(created.hostToken);
+  });
 });

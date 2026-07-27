@@ -14,6 +14,7 @@ import {
   type RoomClient,
   type RoomSession,
 } from "../rooms/client";
+import { RoomGame } from "./RoomGame";
 
 const copy = {
   en: {
@@ -235,6 +236,10 @@ export function RoomLobby({ locale, gameId, initialCode, onExit, api: suppliedAp
         </button>
       </section>
     );
+  }
+
+  if (room?.status === "playing" && session) {
+    return <RoomGame locale={locale} room={room} session={session} api={api} onState={setRoom} />;
   }
 
   if (room && session) {

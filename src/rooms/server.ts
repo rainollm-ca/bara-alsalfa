@@ -138,6 +138,7 @@ const roomStatuses: Record<string, number> = {
   CODE_GENERATION_FAILED: 503,
   TOKEN_GENERATION_FAILED: 503,
   ROOM_CAPACITY: 503,
+  PLAYER_ONLY: 403,
 };
 
 export function jsonResponse(payload: unknown, status = 200) {

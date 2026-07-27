@@ -244,19 +244,18 @@ describe("RoomRepository", () => {
 
     repository.applyAction(created.code, created.hostToken, {
       type: "lobby/select-game",
-      gameId: "charades",
+      gameId: "category-challenge",
     });
+    const guest = repository.join(created.code, { name: "Guest" });
     repository.applyAction(created.code, created.hostToken, {
       type: "lobby/start",
     });
-    const cyclic: Record<string, unknown> = {};
-    cyclic.self = cyclic;
     expect(() =>
-      repository.applyAction(created.code, created.playerToken, {
-        type: "game/action",
-        actionType: "submit",
-        payload: cyclic as never,
-      }),
-    ).toThrowError(expect.objectContaining({ code: "INVALID_PAYLOAD" }));
+      repository.applyAction(created.code, guest.playerToken, {
+        type: "category/score",
+        correctPlayerId: created.playerId,
+        score: 999,
+      } as never),
+    ).toThrowError(expect.objectContaining({ code: "HOST_ONLY" }));
   });
 });
