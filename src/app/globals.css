@@ -2,11 +2,14 @@
 
 :root { --ink:#272019; --muted:#756a5e; --cream:#f4ecde; --paper:#fffaf1; --green:#196b50; --lime:#dbe859; --terracotta:#c85e3f; --gold:#e7af4f; --line:#e2d6c6; }
 * { box-sizing:border-box; }
+html { min-height:100%; overflow-x:hidden; -webkit-text-size-adjust:100%; }
 html, body { margin:0; min-height:100%; }
 body { background:#f4ecde; color:var(--ink); font-family:"Tajawal",sans-serif; }
 button, input { font:inherit; }
 button { cursor:pointer; }
-.shell { min-height:100vh; padding:28px 16px 18px; position:relative; overflow:hidden; display:flex; flex-direction:column; align-items:center; }
+button, input { touch-action:manipulation; }
+:where(button,input,[tabindex]):focus-visible { outline:3px solid var(--gold); outline-offset:3px; }
+.shell { min-height:100vh; min-height:100dvh; padding:max(28px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) max(18px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left)); position:relative; overflow:hidden; display:flex; flex-direction:column; align-items:center; }
 .ambient { position:fixed; width:420px; height:420px; border-radius:50%; filter:blur(4px); opacity:.38; pointer-events:none; }
 .ambientOne { background:#dbe859; top:-280px; right:-150px; }
 .ambientTwo { background:#91d3b4; bottom:-310px; left:-220px; }
@@ -233,7 +236,7 @@ footer { color:#8c918d; font-size:12px; padding:16px; z-index:1; }
 .roomPlayers { width:100%; display:flex; flex-wrap:wrap; justify-content:center; gap:9px; margin-bottom:26px; }
 .roomPlayers span { border:1px solid var(--line); border-radius:999px; padding:10px 15px; background:white; font-weight:800; }
 @media(max-width:560px) {
-  .shell { padding:0; }
+  .shell { padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
   .appCard { min-height:100vh; border:0; border-radius:0; box-shadow:none; }
   .hero,.panel,.reveal,.result { padding:34px 20px 28px; }
   .brand { padding:17px 20px; }
@@ -241,7 +244,7 @@ footer { color:#8c918d; font-size:12px; padding:16px; z-index:1; }
   .brandButton small,.backButton span,.languageSwitch>svg { display:none; }
   .backButton { width:40px; justify-content:center; padding:0; }
   .library { padding:28px 16px 38px; }
-  .libraryIntro h1 { font-size:45px; }
+  .libraryIntro h1 { font-size:clamp(38px,12vw,45px); overflow-wrap:anywhere; }
   .libraryIntro p { font-size:16px; }
   .modeSelector { margin:24px 0 26px; }
   .modeOption { min-height:84px; grid-template-columns:1fr; grid-template-rows:auto auto auto; place-items:center; gap:2px; padding:9px 5px; text-align:center; }
@@ -267,7 +270,7 @@ footer { color:#8c918d; font-size:12px; padding:16px; z-index:1; }
   .scoreButtons { grid-template-columns:1fr; }
   .scoreButtons>div { grid-template-columns:1fr 1fr; }
   .scoreButtons b { grid-column:1/-1; }
-  .players,.suspects { grid-template-columns:repeat(3,1fr); }
+  .players,.suspects { grid-template-columns:repeat(3,minmax(0,1fr)); }
   .playerChip { padding:7px 6px; gap:5px; }
   .actionGame { padding-inline:16px; }
   .roundActions,.timerControls { display:grid; grid-template-columns:1fr 1fr; }
@@ -275,6 +278,26 @@ footer { color:#8c918d; font-size:12px; padding:16px; z-index:1; }
   .roundActions button { min-width:0; }
   .avatar { width:25px; height:25px; }
   footer { display:none; }
+}
+@media(max-width:380px) {
+  .hero,.panel,.reveal,.result { padding-inline:16px; }
+  .topBar { gap:8px; padding-inline:10px; }
+  .brandButton { gap:7px; }
+  .brandMark { width:38px; height:38px; }
+  .languageSwitch button { min-width:32px; }
+  .challengeSetup .challengeCategories { grid-template-columns:1fr; }
+  .players,.suspects { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .scoreStrip>div { padding-inline:10px; }
+  .roomLobby { padding-inline:20px; }
+}
+@media(prefers-reduced-motion:reduce) {
+  *,*::before,*::after {
+    scroll-behavior:auto!important;
+    animation-duration:.01ms!important;
+    animation-iteration-count:1!important;
+    transition-duration:.01ms!important;
+  }
+  .primary:hover,.gameTile:hover { transform:none; }
 }
 @media(min-width:850px) {
   .gameGrid { grid-template-columns:repeat(3,minmax(0,1fr)); }

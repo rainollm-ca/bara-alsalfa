@@ -1,0 +1,20 @@
+{
+  "name": "برا السالفة | Party Games",
+  "short_name": "برا السالفة",
+  "description": "ثمان ألعاب جماعية عربية وإنجليزية للأصدقاء والعائلة.",
+  "lang": "ar",
+  "dir": "rtl",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f4ecde",
+  "theme_color": "#196b50",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
