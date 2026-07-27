@@ -20,7 +20,7 @@ ENV NODE_ENV=production \
     PORT=80 \
     ROOM_DB_PATH=/data/rooms.sqlite
 
-RUN apk add --no-cache libc6-compat libstdc++ libcap \
+RUN apk add --no-cache libc6-compat libstdc++ libcap curl \
     && addgroup --system --gid 1001 nextjs \
     && adduser --system --uid 1001 --ingroup nextjs nextjs \
     && mkdir -p /data \
