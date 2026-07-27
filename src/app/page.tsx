@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 
 import { GameLibrary, readStoredLocale, syncDocumentLocale, writeStoredLocale } from "../components/GameLibrary";
 import { TopBar } from "../components/TopBar";
+import { RoomLobby } from "../components/RoomLobby";
 import { OutOfLoop } from "../components/games/OutOfLoop";
 import { CategoryChallenge } from "../components/games/CategoryChallenge";
 import { Charades } from "../components/games/Charades";
@@ -69,12 +70,8 @@ export default function Home() {
           <MostLikelyTo locale={locale} />
         ) : view === "two-truths-lie" ? (
           <TwoTruthsLie locale={locale} />
-        ) : view === "room-unavailable" ? (
-          <section className="comingSoon roomUnavailable">
-            <span aria-hidden="true">🔗</span>
-            <h1>{locale === "ar" ? "الغرف الجماعية قريباً" : "Group rooms are coming soon"}</h1>
-            <p>{locale === "ar" ? "وضع الغرفة لن يشغّل لعبة الجهاز الواحد. اختاروا جهاز واحد للعب الآن." : "Room mode will never start one-device gameplay. Choose One device to play now."}</p>
-          </section>
+        ) : view === "room-lobby" && activeGame ? (
+          <RoomLobby locale={locale} gameId={activeGame} onExit={() => setActiveGame(null)} />
         ) : (
           <section className="comingSoon">
             <span aria-hidden="true">🎲</span>
