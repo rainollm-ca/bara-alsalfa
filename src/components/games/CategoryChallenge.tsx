@@ -284,6 +284,7 @@ export function CategoryChallenge({ locale, onExit, initialSession }: Props) {
                 const selected = state.selectedCategoryIds.includes(category.id);
                 return (
                   <button
+                    data-action="primary"
                     type="button"
                     key={category.id}
                     className={selected ? "category active" : "category"}
@@ -318,7 +319,7 @@ export function CategoryChallenge({ locale, onExit, initialSession }: Props) {
           <div className="challengeActions">
             <button type="button" className="ghostButton" onClick={onExit}>{backIcon}{text.back}</button>
             <button
-              data-primary-action
+              data-action="primary"
               type="button"
               className="primaryButton"
               disabled={!ready}
@@ -411,7 +412,7 @@ export function CategoryChallenge({ locale, onExit, initialSession }: Props) {
                 const used = state.usedQuestionIds.has(question.id);
                 return (
                   <button
-                    data-primary-action
+                    data-action="primary"
                     type="button"
                     key={question.id}
                     aria-disabled={used}

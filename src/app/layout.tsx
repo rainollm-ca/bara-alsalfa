@@ -2,14 +2,14 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "برا السالفة | مين اللي ضايع؟",
-  description: "لعبة جماعية عربية ممتعة للأصدقاء والعائلة",
+  title: "برا السالفة | Party Games",
+  description: "ثمان ألعاب جماعية بالعربية والإنجليزية للأصدقاء والعائلة | Eight bilingual party games for friends and family.",
   applicationName: "برا السالفة",
   manifest: "/manifest.webmanifest",
   icons: {
     icon: [{ url: "/icon.svg", type: "image/svg+xml" }],
     shortcut: "/icon.svg",
-    apple: "/icon.svg",
+    apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
   },
   appleWebApp: {
     capable: true,
@@ -24,6 +24,7 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
+  viewportFit: "cover",
   themeColor: "#196b50",
   colorScheme: "light",
 };

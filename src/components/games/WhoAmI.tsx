@@ -25,7 +25,7 @@ export function WhoAmI({ locale, prompts = WHO_AM_I_PROMPTS, random = Math.rando
   if (!Object.keys(identities).length) return <SetupShell title={t.title}>
     <PlayerNamesField label={t.player} names={players} value={name} placeholder={t.player} addLabel={t.add} removeLabel={t.remove} max={12} onValueChange={setName} onAdd={() => { setPlayers(normalizeSetupNames([...players, name])); setName(""); }} onRemove={(i) => setPlayers(players.filter((_, x) => x !== i))} />
     {!valid.valid && <p role="status" className="validationMessage">{valid.message}</p>}
-    <button data-primary-action className="primary" disabled={!valid.valid} onClick={() => setIdentities(assignPrivateIdentities(players, prompts, random))}>{t.assign}</button>
+    <button data-action="primary" className="primary" disabled={!valid.valid} onClick={() => setIdentities(assignPrivateIdentities(players, prompts, random))}>{t.assign}</button>
   </SetupShell>;
   const viewer = players[index];
   const visiblePlayers = players.filter((player) => player !== viewer);

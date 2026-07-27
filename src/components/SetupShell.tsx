@@ -112,7 +112,7 @@ function NamesField(props: NamesFieldProps) {
             onKeyDown={(event) => event.key === "Enter" && (event.preventDefault(), props.onAdd())}
             placeholder={props.placeholder}
           />
-          <button type="button" onClick={props.onAdd} aria-label={props.addLabel}><Plus size={21} /></button>
+          <button data-action="primary" type="button" onClick={props.onAdd} aria-label={props.addLabel}><Plus size={21} /></button>
         </div>
       )}
     </fieldset>

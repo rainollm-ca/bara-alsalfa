@@ -60,7 +60,7 @@ em { color:var(--green); font-style:normal; }
 .addRow { display:flex; gap:8px; margin-top:10px; }
 .addRow input { flex:1; min-width:0; border:1px dashed #bdb4a6; border-radius:13px; padding:11px 13px; background:transparent; outline:none; }
 .addRow input:focus { border-color:var(--green); }
-.addRow button { width:45px; border:0; border-radius:13px; background:var(--ink); color:white; display:grid; place-items:center; }
+.addRow button { width:45px; min-height:44px; border:0; border-radius:13px; background:var(--ink); color:white; display:grid; place-items:center; }
 .categoryStep { margin-top:32px; }
 .categories { display:grid; grid-template-columns:repeat(2,1fr); gap:9px; margin-bottom:22px; }
 .category { position:relative; border:1px solid var(--line); background:white; min-height:58px; border-radius:14px; display:flex; align-items:center; gap:10px; padding:10px 13px; color:var(--ink); }
