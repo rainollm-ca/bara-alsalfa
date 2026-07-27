@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "start": "next start",
+    "smoke:rooms": "node tests/room-two-browser-smoke.mjs",
     "build": "next build",
     "lint": "next lint",
     "test": "vitest run"
@@ -22,6 +23,7 @@
     "@types/react": "^19.0.3",
     "@types/react-dom": "^19.0.2",
     "jsdom": "^30.0.0",
+    "playwright-core": "^1.62.0",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"
   }

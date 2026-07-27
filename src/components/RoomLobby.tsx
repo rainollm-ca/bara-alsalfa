@@ -21,7 +21,7 @@ const copy = {
     create: "Create", join: "Join", name: "Your name", code: "Room code",
     createButton: "Create room", joinButton: "Join room", room: "Room",
     waiting: "Waiting for players", share: "Copy invite link", copied: "Invite link copied",
-    start: "Start game", reconnecting: "Connection lost. Reconnecting…",
+    start: "Start game", started: "Game started", reconnecting: "Connection lost. Reconnecting…",
     expired: "This room expired. Create or join a new one.", invalid: "Check the room code and try again.",
   },
   ar: {
@@ -29,36 +29,43 @@ const copy = {
     create: "إنشاء", join: "انضمام", name: "اسمك", code: "رمز الغرفة",
     createButton: "أنشئ الغرفة", joinButton: "انضم للغرفة", room: "الغرفة",
     waiting: "بانتظار اللاعبين", share: "انسخ رابط الدعوة", copied: "تم نسخ رابط الدعوة",
-    start: "ابدأ اللعبة", reconnecting: "انقطع الاتصال. نحاول من جديد…",
+    start: "ابدأ اللعبة", started: "بدأت اللعبة", reconnecting: "انقطع الاتصال. نحاول من جديد…",
     expired: "انتهت صلاحية الغرفة. أنشئ غرفة جديدة أو انضم لغيرها.", invalid: "تأكد من رمز الغرفة وحاول مرة ثانية.",
   },
 } as const;
 
 type Props = {
   locale: Locale;
-  gameId: GameId;
+  gameId?: GameId;
+  initialCode?: string;
   onExit: () => void;
   api?: RoomClient;
 };
 
-export function RoomLobby({ locale, gameId, api: suppliedApi }: Props) {
+export function RoomLobby({ locale, gameId, initialCode, onExit, api: suppliedApi }: Props) {
   const t = copy[locale];
   const api = useMemo(() => suppliedApi ?? createRoomClient(), [suppliedApi]);
-  const [tab, setTab] = useState<"create" | "join">("create");
+  const [tab, setTab] = useState<"create" | "join">(initialCode ? "join" : "create");
   const [name, setName] = useState("");
-  const [code, setCode] = useState("");
+  const [code, setCode] = useState(initialCode ?? "");
   const [session, setSession] = useState<RoomSession | null>(null);
   const [room, setRoom] = useState<PlayerRoomView | null>(null);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
-  const game = GAME_CATALOG.find((candidate) => candidate.id === gameId)!;
+  const game = GAME_CATALOG.find((candidate) => candidate.id === (room?.selectedGame ?? gameId));
+  const [recovery, setRecovery] = useState<"expired" | "failed" | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const linkedCode = new URLSearchParams(window.location.search).get("room")?.toUpperCase();
+    const linkedCode = initialCode ?? new URLSearchParams(window.location.search).get("room")?.toUpperCase();
     if (!linkedCode || !/^[A-Z0-9]{6}$/.test(linkedCode)) return;
     setCode(linkedCode);
-    const stored = readRoomSession(window.localStorage, linkedCode);
+    let stored = null;
+    try {
+      stored = readRoomSession(window.localStorage, linkedCode);
+    } catch {
+      stored = null;
+    }
     if (!stored) {
       setTab("join");
       return;
@@ -69,8 +76,13 @@ export function RoomLobby({ locale, gameId, api: suppliedApi }: Props) {
         setSession(stored);
         setRoom(result.room);
       })
-      .catch(() => setTab("join"));
-  }, [api]);
+      .catch((reason) => {
+        setSession(null);
+        setRoom(null);
+        setRecovery(reason instanceof RoomClientError &&
+          (reason.code === "ROOM_EXPIRED" || reason.code === "ROOM_NOT_FOUND") ? "expired" : "failed");
+      });
+  }, [api, initialCode]);
 
   useEffect(() => {
     if (!session) return;
@@ -78,14 +90,23 @@ export function RoomLobby({ locale, gameId, api: suppliedApi }: Props) {
       setRoom(state);
       setError("");
     }, (reason) => {
-      setError(reason.code === "ROOM_EXPIRED" || reason.code === "ROOM_NOT_FOUND"
-        ? t.expired : t.reconnecting);
+      if (reason.code === "ROOM_EXPIRED" || reason.code === "ROOM_NOT_FOUND" || reason.code === "INVALID_TOKEN") {
+        setRoom(null);
+        setSession(null);
+        setRecovery(reason.code === "INVALID_TOKEN" ? "failed" : "expired");
+      } else {
+        setError(t.reconnecting);
+      }
     });
   }, [api, session, t.expired, t.reconnecting]);
 
   async function create() {
     setError("");
     try {
+      if (!gameId) {
+        setError(t.invalid);
+        return;
+      }
       const result = await api.create({ hostName: name, locale, gameId });
       const next = {
         code: result.code!,
@@ -94,7 +115,11 @@ export function RoomLobby({ locale, gameId, api: suppliedApi }: Props) {
         hostToken: result.hostToken!,
       };
       if (typeof window !== "undefined") {
-        writeRoomSession(window.localStorage, next);
+        try {
+          writeRoomSession(window.localStorage, next);
+        } catch {
+          // Private browsing or an opaque origin can disable storage; the live session still works.
+        }
         const url = new URL(window.location.href);
         url.searchParams.set("room", next.code);
         window.history.replaceState(null, "", url);
@@ -113,7 +138,11 @@ export function RoomLobby({ locale, gameId, api: suppliedApi }: Props) {
       const result = await api.join(normalized, { name });
       const next = { code: normalized, name: name.trim(), playerToken: result.playerToken! };
       if (typeof window !== "undefined") {
-        writeRoomSession(window.localStorage, next);
+        try {
+          writeRoomSession(window.localStorage, next);
+        } catch {
+          // Private browsing or an opaque origin can disable storage; the live session still works.
+        }
         const url = new URL(window.location.href);
         url.searchParams.set("room", next.code);
         window.history.replaceState(null, "", url);
@@ -139,16 +168,37 @@ export function RoomLobby({ locale, gameId, api: suppliedApi }: Props) {
     setCopied(true);
   }
 
+  if (recovery) {
+    return (
+      <section className="roomLobby roomRecovery">
+        <span aria-hidden="true">🔗</span>
+        <h1>{locale === "ar" ? "الغرفة غير متاحة" : "Room unavailable"}</h1>
+        <p>{recovery === "expired" ? t.expired : t.invalid}</p>
+        <button className="primaryButton" type="button" onClick={() => {
+          setRecovery(null);
+          setTab("join");
+        }}>{locale === "ar" ? "حاول الانضمام مجدداً" : "Try joining again"}</button>
+        <button className="ghostButton" type="button" onClick={onExit}>
+          {locale === "ar" ? "أنشئ غرفة جديدة" : "Create a new room"}
+        </button>
+        <button className="textButton" type="button" onClick={onExit}>
+          {locale === "ar" ? "العودة للألعاب" : "Back to games"}
+        </button>
+      </section>
+    );
+  }
+
   if (room && session) {
     return (
-      <section className="roomLobby roomWaiting">
-        <span className="roomGame">{game.emoji} {game.title[locale]}</span>
+      <section className="roomLobby roomWaiting" data-room-status={room.status}>
+        {game && <span className="roomGame">{game.emoji} {game.title[locale]}</span>}
         <p>{t.room}</p>
         <h1 className="roomCode">{room.code}</h1>
         <button className="ghostButton" type="button" onClick={share}>
           {copied ? <Copy size={18} /> : <Link2 size={18} />} {copied ? t.copied : t.share}
         </button>
         <h2><Users size={22} /> {t.waiting}</h2>
+        {room.status === "playing" && <p className="roomStarted">{t.started}</p>}
         <div className="roomPlayers">
           {room.players.map((player) => <span key={player.id}>{player.isHost ? "👑 " : ""}{player.name}</span>)}
         </div>
@@ -169,11 +219,11 @@ export function RoomLobby({ locale, gameId, api: suppliedApi }: Props) {
 
   return (
     <section className="roomLobby">
-      <span className="roomGame">{game.emoji} {game.title[locale]}</span>
+      {game && <span className="roomGame">{game.emoji} {game.title[locale]}</span>}
       <h1>{t.title}</h1>
       <p>{t.intro}</p>
       <div className="roomTabs" role="tablist">
-        <button role="tab" aria-selected={tab === "create"} onClick={() => setTab("create")}>{t.create}</button>
+        {gameId && <button role="tab" aria-selected={tab === "create"} onClick={() => setTab("create")}>{t.create}</button>}
         <button role="tab" aria-selected={tab === "join"} onClick={() => setTab("join")}>{t.join}</button>
       </div>
       <label className="roomField">

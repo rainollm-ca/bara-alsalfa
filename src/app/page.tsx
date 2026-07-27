@@ -16,16 +16,23 @@ import { TwoTruthsLie } from "../components/games/TwoTruthsLie";
 import type { GameId, PlayMode } from "../games/types";
 import type { Locale } from "../lib/game";
 import { resolveGameView } from "../lib/ui-state";
+import { readInviteCode } from "../lib/invite";
 
 export default function Home() {
   const [locale, setLocale] = useState<Locale>("ar");
   const [mode, setMode] = useState<PlayMode>("local");
   const [activeGame, setActiveGame] = useState<GameId | null>(null);
+  const [inviteCode, setInviteCode] = useState<string | null>(null);
 
   useEffect(() => {
     const storedLocale = readStoredLocale(window.localStorage);
     setLocale(storedLocale);
     syncDocumentLocale(storedLocale, document.documentElement);
+    const invited = readInviteCode(window.location.search);
+    if (invited) {
+      setMode("room");
+      setInviteCode(invited);
+    }
   }, []);
 
   function changeLocale(nextLocale: Locale) {
@@ -44,10 +51,24 @@ export default function Home() {
         <TopBar
           locale={locale}
           onLocaleChange={changeLocale}
-          onHome={() => setActiveGame(null)}
-          showBack={activeGame !== null}
+          onHome={() => {
+            setActiveGame(null);
+            setInviteCode(null);
+            window.history.replaceState(null, "", window.location.pathname);
+          }}
+          showBack={activeGame !== null || inviteCode !== null}
         />
-        {view === "library" ? (
+        {inviteCode ? (
+          <RoomLobby
+            locale={locale}
+            initialCode={inviteCode}
+            onExit={() => {
+              setInviteCode(null);
+              setActiveGame(null);
+              window.history.replaceState(null, "", window.location.pathname);
+            }}
+          />
+        ) : view === "library" ? (
           <GameLibrary
             locale={locale}
             mode={mode}

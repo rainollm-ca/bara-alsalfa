@@ -26,6 +26,7 @@ export async function POST(request: Request) {
     const created = roomRepository().create({
       hostName: body.hostName as string,
       ...(body.locale ? { locale: body.locale as "ar" | "en" } : {}),
+      ...(body.privateData === undefined ? {} : { privateData: body.privateData as never }),
     });
     if (body.gameId) {
       roomRepository().applyAction(created.code, created.hostToken, {

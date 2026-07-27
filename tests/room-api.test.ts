@@ -5,6 +5,7 @@ import { POST as joinRoom } from "../src/app/api/rooms/[code]/join/route";
 import { GET as getRoomState } from "../src/app/api/rooms/[code]/state/route";
 import { POST as roomAction } from "../src/app/api/rooms/[code]/action/route";
 import { resetRoomRepositoryForTests } from "../src/rooms/server";
+import { RoomRepository } from "../src/rooms/repository";
 
 const context = (code: string) => ({ params: Promise.resolve({ code }) });
 const jsonRequest = (url: string, body: unknown, token?: string) =>
@@ -154,5 +155,68 @@ describe("room HTTP API", () => {
     );
     expect(accepted.status).toBe(200);
     expect((await accepted.json()).room.selectedGame).toBe("charades");
+  });
+
+  it("returns gone for an expired room", async () => {
+    let now = 1_000;
+    resetRoomRepositoryForTests(new RoomRepository({
+      clock: () => now,
+      inactivityMs: 100,
+      codeFactory: () => "OLD123",
+      tokenFactory: (() => {
+        let value = 0;
+        return () => `secure-expiry-token-${++value}`;
+      })(),
+    }));
+    const created = await (
+      await createRoom(jsonRequest("http://localhost/api/rooms", {
+        contractVersion: 1,
+        hostName: "Host",
+      }))
+    ).json();
+    now += 101;
+    const response = await joinRoom(
+      jsonRequest("http://localhost/api/rooms/OLD123/join", {
+        contractVersion: 1,
+        name: "Guest",
+      }),
+      context(created.code),
+    );
+    expect(response.status).toBe(410);
+    expect((await response.json()).error.code).toBe("ROOM_EXPIRED");
+  });
+
+  it("projects distinct private payloads only to their owner", async () => {
+    const created = await (
+      await createRoom(jsonRequest("http://localhost/api/rooms", {
+        contractVersion: 1,
+        hostName: "Host",
+        privateData: { secret: "host-private-value" },
+      }))
+    ).json();
+    const joined = await (
+      await joinRoom(
+        jsonRequest(`http://localhost/api/rooms/${created.code}/join`, {
+          contractVersion: 1,
+          name: "Guest",
+          privateData: { secret: "guest-private-value" },
+        }),
+        context(created.code),
+      )
+    ).json();
+    const hostPayload = JSON.stringify((await (
+      await getRoomState(
+        new Request(`http://localhost/api/rooms/${created.code}/state`, {
+          headers: { authorization: `Bearer ${created.playerToken}` },
+        }),
+        context(created.code),
+      )
+    ).json()));
+    const guestPayload = JSON.stringify(joined);
+    expect(hostPayload).toContain("host-private-value");
+    expect(hostPayload).not.toContain("guest-private-value");
+    expect(guestPayload).toContain("guest-private-value");
+    expect(guestPayload).not.toContain("host-private-value");
+    expect(hostPayload + guestPayload).not.toContain(created.hostToken);
   });
 });

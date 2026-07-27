@@ -19,6 +19,7 @@ export async function POST(request: Request, { params }: Context) {
     const joined = roomRepository().join(normalizeCode(code), {
       name: body.name as string,
       ...(typeof body.playerToken === "string" ? { playerToken: body.playerToken } : {}),
+      ...(body.privateData === undefined ? {} : { privateData: body.privateData as never }),
     });
     return jsonResponse({
       contractVersion: ROOM_CONTRACT_VERSION,
