@@ -3,9 +3,9 @@
 import { useMemo, useState } from "react";
 import { ArrowLeft, Check, Eye, EyeOff, RotateCcw, Shuffle, Sparkles, Users } from "lucide-react";
 import { CategorySelector, PlayerNamesField, SetupShell, validateSetup } from "../SetupShell";
-import { buildRound, CATEGORIES, DEFAULT_PLAYERS, normalizePlayers, type GameRound, type Locale } from "../../lib/game";
+import { buildRound, calculateVote, CATEGORIES, DEFAULT_PLAYERS, normalizePlayers, type GameRound, type Locale } from "../../lib/game";
 
-type Screen = "home" | "setup" | "reveal" | "play" | "result";
+type Screen = "home" | "setup" | "reveal" | "play" | "vote-pass" | "vote" | "result";
 
 const copy = {
   ar: {
@@ -23,6 +23,7 @@ const copy = {
     ask: "اسألوا بالدور", askHint: "سؤال واحد لكل لاعب", watch: "راقبوا الإجابات", watchHint: "مين كلامه مش راكب؟",
     vote: "صوّتوا سوا", voteHint: "اختاروا المشتبه به", whoOut: "مين برا السالفة؟", truth: "اكشفوا الحقيقة",
     caught: "كشفتوه!", fooled: "ضحك عليكم!", wasOut: "كان برا السالفة", wordWas: "الكلمة كانت",
+    passVote: "مرّروا الجوال إلى", readyVote: "جاهز، صوّت بسرية", lockVote: "ثبّت صوتي", tiedVote: "تعادل في التصويت",
     again: "جولة جديدة بنفس اللاعبين", change: "تغيير اللاعبين أو الفئة", footer: "مصممة للّمة الحلوة · لا تجمع أي بيانات",
   },
   en: {
@@ -40,6 +41,7 @@ const copy = {
     ask: "Take turns asking", askHint: "One question per player", watch: "Watch the answers", watchHint: "Whose story does not fit?",
     vote: "Vote together", voteHint: "Choose your suspect", whoOut: "Who is out of the loop?", truth: "Reveal the truth",
     caught: "You caught them!", fooled: "They fooled you!", wasOut: "was out of the loop", wordWas: "The word was",
+    passVote: "Pass the phone to", readyVote: "Ready, vote privately", lockVote: "Lock my vote", tiedVote: "The vote was tied",
     again: "New round, same players", change: "Change players or category", footer: "Made for good company · No data collected",
   },
 } as const;
@@ -57,6 +59,8 @@ export function OutOfLoop({ locale }: OutOfLoopProps) {
   const [revealIndex, setRevealIndex] = useState(0);
   const [revealed, setRevealed] = useState(false);
   const [suspect, setSuspect] = useState("");
+  const [voteIndex, setVoteIndex] = useState(0);
+  const [votes, setVotes] = useState<Record<string, string>>({});
   const t = copy[locale];
 
   const category = useMemo(() => CATEGORIES.find((item) => item.id === categoryId)!, [categoryId]);
@@ -74,6 +78,8 @@ export function OutOfLoop({ locale }: OutOfLoopProps) {
     setRevealIndex(0);
     setRevealed(false);
     setSuspect("");
+    setVoteIndex(0);
+    setVotes({});
     setScreen("reveal");
   }
 
@@ -165,18 +171,31 @@ export function OutOfLoop({ locale }: OutOfLoopProps) {
               <div><span>2</span><p><b>{t.watch}</b><br />{t.watchHint}</p></div>
               <div><span>3</span><p><b>{t.vote}</b><br />{t.voteHint}</p></div>
             </div>
-            <h3>{t.whoOut}</h3>
-            <div className="suspects">
-              {round.roles.map(({ player }) => <button key={player} onClick={() => setSuspect(player)} className={suspect === player ? "selected" : ""}>{player}{suspect === player && <Check size={15} />}</button>)}
-            </div>
-            <button className="primary" disabled={!suspect} onClick={() => setScreen("result")}>{t.truth} <Eye size={20} /></button>
+            <button className="primary" onClick={() => setScreen("vote-pass")}>{t.vote} <Eye size={20} /></button>
           </div>
         )}
 
+        {screen === "vote-pass" && round && <div className="reveal">
+          <h2>{t.passVote}</h2><div className="bigName">{round.roles[voteIndex].player}</div>
+          <p className="privacy">{t.private}</p>
+          <button autoFocus className="primary" onClick={() => setScreen("vote")}>{t.readyVote}</button>
+        </div>}
+
+        {screen === "vote" && round && <div className="panel play">
+          <h2>{t.whoOut}</h2>
+          <div className="suspects">{round.roles.filter((_, index) => index !== voteIndex).map(({ player }) => <button key={player} onClick={() => setSuspect(player)} className={suspect === player ? "selected" : ""}>{player}{suspect === player && <Check size={15} />}</button>)}</div>
+          <button className="primary" disabled={!suspect} onClick={() => {
+            const nextVotes = { ...votes, [round.roles[voteIndex].player]: suspect };
+            setVotes(nextVotes); setSuspect("");
+            if (voteIndex === round.roles.length - 1) setScreen("result");
+            else { setVoteIndex(voteIndex + 1); setScreen("vote-pass"); }
+          }}>{t.lockVote}</button>
+        </div>}
+
         {screen === "result" && round && (
           <div className="result">
-            <div className={suspect === round.outsider ? "resultIcon win" : "resultIcon lose"}>{suspect === round.outsider ? "🎉" : "😏"}</div>
-            <p className="eyebrow">{suspect === round.outsider ? t.caught : t.fooled}</p>
+            <div className={calculateVote(votes).leaders.includes(round.outsider) ? "resultIcon win" : "resultIcon lose"}>{calculateVote(votes).leaders.includes(round.outsider) ? "🎉" : "😏"}</div>
+            <p className="eyebrow">{calculateVote(votes).tied ? t.tiedVote : calculateVote(votes).leaders.includes(round.outsider) ? t.caught : t.fooled}</p>
             <h2><em>{round.outsider}</em> {t.wasOut}</h2>
             <div className="answer"><span>{t.wordWas}</span><strong>{round.word}</strong><small>{round.category.emoji} {round.categoryTitle}</small></div>
             <button className="primary" onClick={startRound}><RotateCcw size={19} /> {t.again}</button>

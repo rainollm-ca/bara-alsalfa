@@ -219,4 +219,10 @@ describe("social game engines", () => {
       createTwoTruthsRound("player-1", ["one", "two", "three"], 3),
     ).toThrow(/lie/i);
   });
+
+  it("rejects duplicate normalized statements", () => {
+    expect(() =>
+      createTwoTruthsRound("player-1", ["same", " SAME ", "different"], 2),
+    ).toThrow(/unique/i);
+  });
 });

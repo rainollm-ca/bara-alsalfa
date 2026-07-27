@@ -2,6 +2,7 @@ export type LocalizedText = {
   ar: string;
   en: string;
 };
+export type Locale = "ar" | "en";
 
 export type GameId =
   | "category-challenge"

@@ -9,5 +9,7 @@ export function resolveGameView(activeGame: GameId | null, mode: PlayMode) {
   if (activeGame === "forbidden-word") return "forbidden-word";
   if (activeGame === "who-am-i") return "who-am-i";
   if (activeGame === "rapid-fire") return "rapid-fire";
+  if (activeGame === "most-likely-to") return "most-likely-to";
+  if (activeGame === "two-truths-lie") return "two-truths-lie";
   return "unavailable";
 }

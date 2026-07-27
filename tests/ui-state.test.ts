@@ -24,7 +24,10 @@ describe("game library UI state", () => {
     expect(resolveGameView("forbidden-word", "local")).toBe("forbidden-word");
     expect(resolveGameView("who-am-i", "local")).toBe("who-am-i");
     expect(resolveGameView("rapid-fire", "local")).toBe("rapid-fire");
+    expect(resolveGameView("most-likely-to", "local")).toBe("most-likely-to");
+    expect(resolveGameView("two-truths-lie", "local")).toBe("two-truths-lie");
     expect(resolveGameView("out-of-loop", "room")).toBe("room-unavailable");
+    expect(resolveGameView("most-likely-to", "room")).toBe("room-unavailable");
   });
 
   it("provides localized library labels", () => {

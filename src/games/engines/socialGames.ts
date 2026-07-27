@@ -54,6 +54,10 @@ export function createTwoTruthsRound(
   if (statements.some((statement) => !statement.trim())) {
     throw new Error("All three statements are required.");
   }
+  const normalized = statements.map((statement) => statement.trim().toLocaleLowerCase());
+  if (new Set(normalized).size !== 3) {
+    throw new Error("All three statements must be unique.");
+  }
   if (lieIndex !== 0 && lieIndex !== 1 && lieIndex !== 2) {
     throw new Error("The lie index must identify one of the three statements.");
   }
