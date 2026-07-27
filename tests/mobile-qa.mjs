@@ -253,9 +253,9 @@ async function runFullFlowQa(browser) {
 
     // Timed action games: start a real round, restore it, then restore their final controller.
     for (const game of [
-      { index: 2, id: "charades" },
-      { index: 3, id: "forbidden-word" },
-      { index: 5, id: "rapid-fire" },
+      { index: 2, id: "charades", turns: 4 },
+      { index: 3, id: "forbidden-word", turns: 4 },
+      { index: 5, id: "rapid-fire", turns: 2 },
     ]) {
       await page.getByRole("button", { name: locale.id === "ar" ? "المكتبة" : "Game library" }).click();
       await page.locator(".gameAction").nth(game.index).click();
@@ -264,8 +264,14 @@ async function runFullFlowQa(browser) {
       await page.locator(".timedRound .primary").click();
       await reloadAndResume(page, `${game.id} round ${locale.id}`);
       assert.ok(await page.locator(".actionGame").isVisible());
-      await forceController(page, { screen: "final", scores: { One: 1, Two: 0 } });
-      await reloadAndResume(page, `${game.id} result ${locale.id}`);
+      for (let turn = 0; turn < game.turns; turn += 1) {
+        await forceController(page, {
+          expired: true,
+          timer: { status: "expired", remainingMs: 0, startedAt: null },
+        });
+        await reloadAndResume(page, `${game.id} expired turn ${turn + 1} ${locale.id}`);
+        await page.locator(".actionGame .primary").last().click();
+      }
       assert.ok(await page.locator(".finalScores").isVisible());
     }
 
