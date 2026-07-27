@@ -45,7 +45,7 @@ export function MostLikelyTo({ locale }: { locale: Locale }) {
     {phase === "setup" && <SetupShell title={t.title} hint={t.hint}>
       <PlayerNamesField label={t.title} hint={t.hint} names={players} value={name} placeholder={t.placeholder} addLabel={t.add} removeLabel={t.remove} max={16} onValueChange={setName} onAdd={add} onRemove={(index) => setPlayers(players.filter((_, i) => i !== index))} />
       {!valid.valid && <p role="status" className="validationMessage">{valid.message}</p>}
-      <button className="primary" disabled={!valid.valid} onClick={() => setPhase("pass")}>{t.start}</button>
+      <button data-primary-action className="primary" disabled={!valid.valid} onClick={() => setPhase("pass")}>{t.start}</button>
     </SetupShell>}
     {phase === "pass" && <div className="reveal"><h2>{t.pass}</h2><div className="bigName">{players[voter]}</div><p>{t.private}</p><button autoFocus className="primary" onClick={() => setPhase("vote")}>{t.ready}</button></div>}
     {phase === "vote" && <div><p ref={voteHeadingRef} tabIndex={-1} className="eyebrow">{MOST_LIKELY_TO_PROMPTS[promptIndex].text[locale]}</p><div className="suspects">{players.map((player) => <button key={player} className={choice === player ? "selected" : ""} onClick={() => setChoice(player)}>{player}</button>)}</div><button className="primary" disabled={!choice} onClick={lock}>{t.lock}</button></div>}

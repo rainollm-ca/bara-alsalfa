@@ -296,7 +296,7 @@ export function RoomLobby({ locale, gameId, initialCode, onExit, api: suppliedAp
         </label>
       )}
       {error && <p role="alert" className="validationMessage">{error}</p>}
-      <button className="primaryButton" disabled={submitting || !name.trim() || (tab === "join" && !/^[A-Z0-9]{6}$/.test(code))} onClick={tab === "create" ? create : join}>
+      <button data-primary-action className="primaryButton" disabled={submitting || !name.trim() || (tab === "join" && !/^[A-Z0-9]{6}$/.test(code))} onClick={tab === "create" ? create : join}>
         {tab === "create" ? t.createButton : t.joinButton}
       </button>
       </div>

@@ -145,7 +145,7 @@ export function OutOfLoop({ locale }: OutOfLoopProps) {
               onChange={setCategoryId}
             />
             {!setupValidation.valid && <p className="validationMessage" role="status">{setupValidation.message}</p>}
-            <button className="primary" disabled={!setupValidation.valid} onClick={startRound}>{t.assign} <Shuffle size={20} /></button>
+            <button data-primary-action className="primary" disabled={!setupValidation.valid} onClick={startRound}>{t.assign} <Shuffle size={20} /></button>
           </SetupShell>
         )}
 

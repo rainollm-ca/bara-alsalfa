@@ -318,6 +318,7 @@ export function CategoryChallenge({ locale, onExit, initialSession }: Props) {
           <div className="challengeActions">
             <button type="button" className="ghostButton" onClick={onExit}>{backIcon}{text.back}</button>
             <button
+              data-primary-action
               type="button"
               className="primaryButton"
               disabled={!ready}
@@ -410,6 +411,7 @@ export function CategoryChallenge({ locale, onExit, initialSession }: Props) {
                 const used = state.usedQuestionIds.has(question.id);
                 return (
                   <button
+                    data-primary-action
                     type="button"
                     key={question.id}
                     aria-disabled={used}

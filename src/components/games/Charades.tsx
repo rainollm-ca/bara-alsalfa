@@ -70,7 +70,7 @@ export function Charades({ locale, roundSeconds: initialSeconds = 60, roundsPerT
       <TeamNamesField label={t.team} names={teams} value={name} placeholder={t.team} addLabel={t.add} removeLabel={t.remove} max={8} onValueChange={setName} onAdd={addTeam} onRemove={(index) => setTeams(teams.filter((_, i) => i !== index))} />
       <DurationSelector label={t.duration} value={seconds} options={[30, 60, 90]} unit={t.sec} onChange={setSeconds} />
       {!validation.valid && <p role="status" className="validationMessage">{validation.message}</p>}
-      <button className="primary" disabled={!validation.valid} onClick={start}>{t.start}</button>
+      <button data-primary-action className="primary" disabled={!validation.valid} onClick={start}>{t.start}</button>
     </SetupShell>
   );
   if (screen === "final") return <Final title={t.finalTitle} scores={scores} winner={winner?.[0]} wins={t.wins} />;

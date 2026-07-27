@@ -42,18 +42,58 @@ async function assertMobilePage(page, locale, label) {
     `${label}: horizontal overflow (${documentLocale.scrollWidth}px > ${documentLocale.clientWidth}px)`,
   );
 
-  const controls = page.locator(
-    "main button:not([aria-label^='Remove']):not([aria-label^='حذف'])",
-  );
-  assert.ok(await controls.count(), `${label}: expected a primary control`);
-  const visibleControls = await controls.evaluateAll((buttons) =>
-    buttons.filter((button) => {
+  const primaryActions = page.locator("main [data-primary-action]");
+  const count = await primaryActions.count();
+  assert.ok(count > 0, `${label}: no explicitly marked primary action`);
+
+  const diagnostics = [];
+  for (let index = 0; index < count; index += 1) {
+    const action = primaryActions.nth(index);
+    await action.scrollIntoViewIfNeeded();
+    const result = await action.evaluate((button) => {
       const rect = button.getBoundingClientRect();
       const style = getComputedStyle(button);
-      return rect.width >= 40 && rect.height >= 40 && style.visibility !== "hidden";
-    }).length,
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      return {
+        text: button.textContent?.trim().replace(/\s+/g, " ") ?? "",
+        playwrightVisible:
+          Boolean(rect.width && rect.height) &&
+          style.display !== "none" &&
+          style.visibility !== "hidden",
+        rendered:
+          style.display !== "none" &&
+          style.visibility !== "hidden" &&
+          Number(style.opacity) > 0,
+        touchTarget: rect.height >= 44 && rect.width >= 44,
+        fullyInViewport:
+          rect.top >= 0 &&
+          rect.left >= 0 &&
+          rect.bottom <= viewportHeight &&
+          rect.right <= viewportWidth,
+        rect: {
+          top: Math.round(rect.top),
+          right: Math.round(rect.right),
+          bottom: Math.round(rect.bottom),
+          left: Math.round(rect.left),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
+        },
+      };
+    });
+    result.playwrightVisible = result.playwrightVisible && await action.isVisible();
+    diagnostics.push(result);
+    if (
+      result.playwrightVisible &&
+      result.rendered &&
+      result.touchTarget &&
+      result.fullyInViewport
+    ) return;
+  }
+
+  assert.fail(
+    `${label}: no visible, in-viewport 44px primary action: ${JSON.stringify(diagnostics)}`,
   );
-  assert.ok(visibleControls > 0, `${label}: no visible touch-sized primary control`);
 }
 
 async function setLocale(page, locale) {

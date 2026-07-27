@@ -116,6 +116,7 @@ export function GameLibrary({
               </div>
             </div>
             <button
+              data-primary-action
               className="gameAction"
               type="button"
               onClick={() => onChooseGame(game.id)}
