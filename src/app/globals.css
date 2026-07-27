@@ -130,6 +130,18 @@ footer { color:#8c918d; font-size:12px; padding:16px; z-index:1; }
 .setupHeading .setupKicker { margin:0 0 4px; color:var(--terracotta); font-size:12px; font-weight:900; letter-spacing:.12em; }
 .setupHeading h1 { margin:0; font-size:38px; letter-spacing:-.03em; }
 .setupHeading>p:last-child { margin:4px 0 0; color:var(--muted); }
+.setupField { min-width:0; margin:0 0 28px; padding:0; border:0; }
+.setupField legend { margin-bottom:2px; padding:0; font-size:22px; font-weight:900; }
+.fieldHint { margin:0 0 14px; color:var(--muted); font-size:13px; }
+.categoryField { margin-top:8px; }
+.durationOptions { display:flex; flex-wrap:wrap; gap:8px; }
+.durationOptions button { min-width:82px; min-height:46px; padding:9px 13px; border:1px solid var(--line); border-radius:13px; background:white; color:var(--ink); font-weight:800; }
+.durationOptions button.active { border-color:var(--green); background:#eaf2e8; color:var(--green); box-shadow:inset 0 0 0 1px var(--green); }
+.validationMessage { margin:-9px 0 12px; color:#9c432e; font-size:13px; font-weight:700; }
+.comingSoon { min-height:560px; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:38px 24px; text-align:center; }
+.comingSoon>span { font-size:64px; }
+.comingSoon h1 { max-width:480px; margin:18px 0 8px; font-size:clamp(35px,8vw,58px); }
+.comingSoon p { max-width:430px; margin:0; color:var(--muted); font-size:17px; }
 @media(max-width:560px) {
   .shell { padding:0; }
   .appCard { min-height:100vh; border:0; border-radius:0; box-shadow:none; }

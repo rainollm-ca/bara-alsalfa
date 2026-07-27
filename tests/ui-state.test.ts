@@ -6,9 +6,20 @@ import {
   readStoredLocale,
   writeStoredLocale,
 } from "../src/components/GameLibrary";
-import { validateSetup } from "../src/components/SetupShell";
+import {
+  normalizeSetupNames,
+  validateDuration,
+  validateSetup,
+} from "../src/components/SetupShell";
+import { resolveGameView } from "../src/lib/ui-state";
 
 describe("game library UI state", () => {
+  it("coordinates library, playable, and upcoming game views", () => {
+    expect(resolveGameView(null)).toBe("library");
+    expect(resolveGameView("out-of-loop")).toBe("out-of-loop");
+    expect(resolveGameView("charades")).toBe("unavailable");
+  });
+
   it("provides localized library labels", () => {
     expect(getLibraryCopy("ar")).toMatchObject({
       libraryTitle: "اختاروا لعبتكم",
@@ -56,6 +67,21 @@ describe("shared setup validation", () => {
     expect(validateSetup(17, { min: 4, max: 16 }, "en")).toEqual({
       valid: false,
       message: "This game supports up to 16 players",
+    });
+  });
+
+  it("normalizes reusable player and team name collections", () => {
+    expect(normalizeSetupNames([" Noor ", "", "Noor", " Sami "])).toEqual([
+      "Noor",
+      "Sami",
+    ]);
+  });
+
+  it("validates reusable round durations", () => {
+    expect(validateDuration(60, { min: 30, max: 180 })).toEqual({ valid: true });
+    expect(validateDuration(15, { min: 30, max: 180 }, "en")).toEqual({
+      valid: false,
+      message: "Choose a duration from 30 to 180 seconds",
     });
   });
 });
