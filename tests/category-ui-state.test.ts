@@ -3,10 +3,14 @@ import { describe, expect, it } from "vitest";
 import {
   awardQuestion,
   categoryChallengeWinner,
+  createQuestionTimer,
   createCategoryChallengeState,
   openQuestion,
+  pauseQuestionTimer,
   remainingQuestionSeconds,
+  resumeQuestionTimer,
   revealQuestionAnswer,
+  startQuestionTimer,
   setCategorySelection,
   setTeamName,
 } from "../src/components/games/CategoryChallenge";
@@ -40,32 +44,53 @@ describe("Category Challenge UI state", () => {
   });
 
   it("locks a used question as soon as it is opened", () => {
-    const state = openQuestion(createCategoryChallengeState(), "science-01", 200, 5_000);
+    const state = openQuestion(createCategoryChallengeState(), "science-01", 200);
     expect(state.activeQuestion).toMatchObject({ questionId: "science-01", points: 200 });
     expect(state.usedQuestionIds.has("science-01")).toBe(true);
-    expect(openQuestion(state, "science-01", 200, 8_000)).toBe(state);
+    expect(openQuestion(state, "science-01", 200)).toBe(state);
   });
 
-  it("reveals the answer without changing the timer start timestamp", () => {
-    const opened = openQuestion(createCategoryChallengeState(), "science-01", 100, 12_000);
+  it("reveals the answer and stops its timer", () => {
+    const opened = {
+      ...openQuestion(createCategoryChallengeState(), "science-01", 100),
+      activeQuestion: {
+        ...openQuestion(createCategoryChallengeState(), "science-01", 100).activeQuestion!,
+        timer: startQuestionTimer(createQuestionTimer(), 12_000),
+      },
+    };
     const revealed = revealQuestionAnswer(opened);
     expect(revealed.activeQuestion?.revealed).toBe(true);
-    expect(revealed.activeQuestion?.startedAt).toBe(12_000);
+    expect(revealed.activeQuestion?.timer.status).toBe("stopped");
   });
 
   it("derives a 30 second countdown from timestamps", () => {
-    expect(remainingQuestionSeconds(10_000, 10_000)).toBe(30);
-    expect(remainingQuestionSeconds(10_000, 20_001)).toBe(20);
-    expect(remainingQuestionSeconds(10_000, 40_000)).toBe(0);
+    const paused = createQuestionTimer();
+    expect(remainingQuestionSeconds(paused, Number.MAX_SAFE_INTEGER)).toBe(30);
+
+    const running = startQuestionTimer(paused, 10_000);
+    expect(remainingQuestionSeconds(running, 10_000)).toBe(30);
+    expect(remainingQuestionSeconds(running, 20_001)).toBe(20);
+    expect(remainingQuestionSeconds(running, 9_000)).toBe(30);
+    expect(remainingQuestionSeconds(running, 99_000)).toBe(0);
+  });
+
+  it("pauses and resumes from a frozen timestamp-derived remainder", () => {
+    const running = startQuestionTimer(createQuestionTimer(), 1_000);
+    const paused = pauseQuestionTimer(running, 11_250);
+    expect(paused).toMatchObject({ status: "paused", remainingMs: 19_750, startedAt: null });
+    expect(remainingQuestionSeconds(paused, 50_000)).toBe(20);
+
+    const resumed = resumeQuestionTimer(paused, 50_000);
+    expect(remainingQuestionSeconds(resumed, 55_000)).toBe(15);
   });
 
   it("awards or deducts question points and closes the question", () => {
-    const opened = openQuestion(createCategoryChallengeState(), "science-01", 300, 0);
+    const opened = openQuestion(createCategoryChallengeState(), "science-01", 300);
     const awarded = awardQuestion(opened, "teamOne", 1);
     expect(awarded.scores.teamOne).toBe(300);
     expect(awarded.activeQuestion).toBeNull();
 
-    const second = openQuestion(awarded, "history-01", 200, 1);
+    const second = openQuestion(awarded, "history-01", 200);
     const deducted = awardQuestion(second, "teamTwo", -1);
     expect(deducted.scores.teamTwo).toBe(-200);
   });
