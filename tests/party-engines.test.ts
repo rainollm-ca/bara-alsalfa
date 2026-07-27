@@ -17,6 +17,7 @@ import {
 } from "../src/games/engines/actionGames";
 import {
   createTwoTruthsRound,
+  projectTwoTruthsRound,
   revealTwoTruthsLie,
   tallyVotes,
 } from "../src/games/engines/socialGames";
@@ -45,6 +46,35 @@ describe("party game content", () => {
         expect(word.en.trim()).not.toBe("");
       }
     }
+  });
+
+  it("keeps action packs distinct and forbidden clues target-specific", () => {
+    const packs = [
+      CHARADES_PROMPTS,
+      FORBIDDEN_WORD_PROMPTS,
+      WHO_AM_I_PROMPTS,
+      RAPID_FIRE_PROMPTS,
+    ];
+    for (let left = 0; left < packs.length; left += 1) {
+      for (let right = left + 1; right < packs.length; right += 1) {
+        const rightTargets = new Set(packs[right].map(({ text }) => text.en));
+        const overlap = packs[left].filter(({ text }) => rightTargets.has(text.en));
+        expect(overlap.length).toBeLessThanOrEqual(3);
+      }
+    }
+
+    const forbiddenSignatures = new Set(
+      FORBIDDEN_WORD_PROMPTS.map(({ forbidden }) =>
+        forbidden.map(({ en }) => en).join("|"),
+      ),
+    );
+    expect(forbiddenSignatures.size).toBeGreaterThanOrEqual(55);
+
+    const rapidFireTexts = RAPID_FIRE_PROMPTS.map(({ text }) => text.en);
+    expect(new Set(rapidFireTexts).size).toBe(RAPID_FIRE_PROMPTS.length);
+    expect(
+      new Set(rapidFireTexts.map((text) => text.split(" ")[0])).size,
+    ).toBeGreaterThanOrEqual(8);
   });
 
   it("provides at least forty stable bilingual Most Likely To prompts", () => {
@@ -94,6 +124,9 @@ describe("action game engines", () => {
     expect(correct).toEqual({ alpha: 3, beta: 1 });
     expect(skipped).toEqual(correct);
     expect(scores).toEqual({ alpha: 2, beta: 1 });
+    expect(() =>
+      scoreCharades(scores, "missing" as keyof typeof scores, true),
+    ).toThrow(/unknown/i);
   });
 
   it("records forbidden-word violations without mutating the round", () => {
@@ -125,6 +158,9 @@ describe("action game engines", () => {
     const scores = { player: 4 } as const;
     expect(scoreRapidFire(scores, "player", "correct")).toEqual({ player: 5 });
     expect(scoreRapidFire(scores, "player", "pass")).toBe(scores);
+    expect(() =>
+      scoreRapidFire(scores, "missing" as keyof typeof scores, "correct"),
+    ).toThrow(/unknown/i);
   });
 });
 
@@ -137,18 +173,47 @@ describe("social game engines", () => {
     expect(result.isTie).toBe(true);
   });
 
-  it("creates a user-entered two-truths round and reveals the lie immutably", () => {
+  it("safely tallies adversarial player IDs as ordinary own keys", () => {
+    const result = tallyVotes([
+      "__proto__",
+      "constructor",
+      "__proto__",
+      "toString",
+    ]);
+
+    expect(Object.getPrototypeOf(result.counts)).toBeNull();
+    expect(Object.hasOwn(result.counts, "__proto__")).toBe(true);
+    expect(result.counts["__proto__"]).toBe(2);
+    expect(result.counts.constructor).toBe(1);
+    expect(result.counts.toString).toBe(1);
+    expect(result.winners).toEqual(["__proto__"]);
+  });
+
+  it("redacts the lie from player view until an immutable reveal", () => {
     const round = createTwoTruthsRound(
       "player-1",
       ["I climbed a mountain", "I speak four languages", "I own a tiger"],
       2,
     );
+    const hiddenView = projectTwoTruthsRound(round);
     const revealed = revealTwoTruthsLie(round);
+    const revealedView = projectTwoTruthsRound(revealed);
 
     expect(round.revealed).toBe(false);
+    expect(hiddenView).toEqual({
+      playerId: "player-1",
+      statements: ["I climbed a mountain", "I speak four languages", "I own a tiger"],
+      revealed: false,
+    });
+    expect("lieIndex" in hiddenView).toBe(false);
     expect(revealed).not.toBe(round);
     expect(revealed.revealed).toBe(true);
-    expect(revealed.lieIndex).toBe(2);
+    expect(revealedView).toEqual({
+      playerId: "player-1",
+      statements: ["I climbed a mountain", "I speak four languages", "I own a tiger"],
+      revealed: true,
+      lieIndex: 2,
+    });
     expect(revealed.statements).toEqual(round.statements);
     expect(() =>
       createTwoTruthsRound("player-1", ["one", "two", "three"], 3),

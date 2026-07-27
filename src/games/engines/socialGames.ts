@@ -5,34 +5,51 @@ export type VoteTally = {
 };
 
 export function tallyVotes(votes: readonly string[]): VoteTally {
-  const counts: Record<string, number> = {};
+  const voteMap = new Map<string, number>();
   for (const playerId of votes) {
-    counts[playerId] = (counts[playerId] ?? 0) + 1;
+    voteMap.set(playerId, (voteMap.get(playerId) ?? 0) + 1);
   }
 
-  const highest = Math.max(0, ...Object.values(counts));
-  const winners = Object.keys(counts).filter(
-    (playerId) => counts[playerId] === highest,
-  );
+  const highest = Math.max(0, ...voteMap.values());
+  const winners = [...voteMap.entries()]
+    .filter(([, count]) => count === highest)
+    .map(([playerId]) => playerId);
+  const counts = Object.create(null) as Record<string, number>;
+  for (const [playerId, count] of voteMap) counts[playerId] = count;
   return {
-    counts: { ...counts },
+    counts,
     winners: [...winners],
     isTie: winners.length > 1,
   };
 }
 
-export type TwoTruthsRound = {
+export type TwoTruthsSecretRound = {
   readonly playerId: string;
   readonly statements: readonly [string, string, string];
   readonly lieIndex: 0 | 1 | 2;
   readonly revealed: boolean;
 };
 
+export type HiddenTwoTruthsView = {
+  readonly playerId: string;
+  readonly statements: readonly [string, string, string];
+  readonly revealed: false;
+};
+
+export type RevealedTwoTruthsView = {
+  readonly playerId: string;
+  readonly statements: readonly [string, string, string];
+  readonly revealed: true;
+  readonly lieIndex: 0 | 1 | 2;
+};
+
+export type TwoTruthsPlayerView = HiddenTwoTruthsView | RevealedTwoTruthsView;
+
 export function createTwoTruthsRound(
   playerId: string,
   statements: readonly [string, string, string],
   lieIndex: number,
-): TwoTruthsRound {
+): TwoTruthsSecretRound {
   if (!playerId.trim()) throw new Error("A player ID is required.");
   if (statements.some((statement) => !statement.trim())) {
     throw new Error("All three statements are required.");
@@ -48,11 +65,25 @@ export function createTwoTruthsRound(
   };
 }
 
-export function revealTwoTruthsLie(round: TwoTruthsRound): TwoTruthsRound {
+export function revealTwoTruthsLie(
+  round: TwoTruthsSecretRound,
+): TwoTruthsSecretRound {
   if (round.revealed) return round;
   return {
     ...round,
     statements: [...round.statements],
     revealed: true,
   };
+}
+
+export function projectTwoTruthsRound(
+  round: TwoTruthsSecretRound,
+): TwoTruthsPlayerView {
+  const shared = {
+    playerId: round.playerId,
+    statements: [...round.statements] as readonly [string, string, string],
+  };
+  return round.revealed
+    ? { ...shared, revealed: true, lieIndex: round.lieIndex }
+    : { ...shared, revealed: false };
 }

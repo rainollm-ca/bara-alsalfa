@@ -59,6 +59,9 @@ export function scoreCharades<S extends Scores>(
   teamId: keyof S,
   guessed: boolean,
 ): WidenedScores<S> {
+  if (!Object.hasOwn(scores, teamId)) {
+    throw new Error(`Unknown charades team: ${String(teamId)}`);
+  }
   if (!guessed) return scores;
   return { ...scores, [teamId]: scores[teamId] + 1 };
 }
@@ -102,6 +105,9 @@ export function scoreRapidFire<S extends Scores>(
   playerId: keyof S,
   outcome: RapidFireOutcome,
 ): WidenedScores<S> {
+  if (!Object.hasOwn(scores, playerId)) {
+    throw new Error(`Unknown rapid-fire player: ${String(playerId)}`);
+  }
   if (outcome === "pass") return scores;
   return { ...scores, [playerId]: scores[playerId] + 1 };
 }
