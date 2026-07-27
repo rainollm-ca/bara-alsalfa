@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { createTwoTruthsRound, projectTwoTruthsRound, revealTwoTruthsLie, tallyVotes, type TwoTruthsSecretRound } from "../../games/engines/socialGames";
 import type { Locale } from "../../games/types";
 import { PlayerNamesField, SetupShell, validateSetup } from "../SetupShell";
-import { isPlainRecord, isShortString, isStringList, isSafeInteger, useGameSessionState } from "../../lib/useGameSessionState";
+import { isStringList, isSafeInteger, isTwoTruthsRound, useGameSessionState } from "../../lib/useGameSessionState";
 
 type Phase = "setup" | "entry-pass" | "entry" | "round-pass" | "vote" | "reveal";
 const copy = {
@@ -20,7 +20,7 @@ export function TwoTruthsLie({ locale }: { locale: Locale }) {
   const [storyteller, setStoryteller] = useGameSessionState("two-truths-lie", locale, "storyteller", 0, isSafeInteger(0, 11));
   const [statements, setStatements] = useGameSessionState("two-truths-lie", locale, "statements", ["", "", ""], (value): value is string[] => isStringList(value) && value.length === 3);
   const [lie, setLie] = useGameSessionState<0 | 1 | 2>("two-truths-lie", locale, "lie", 0, (value): value is 0 | 1 | 2 => value === 0 || value === 1 || value === 2);
-  const [round, setRound] = useGameSessionState<TwoTruthsSecretRound | null>("two-truths-lie", locale, "round", null, (value): value is TwoTruthsSecretRound | null => value === null || (isPlainRecord(value) && isShortString(value.playerId) && Array.isArray(value.statements) && value.statements.length === 3 && value.statements.every(isShortString) && [0, 1, 2].includes(Number(value.lieIndex)) && typeof value.revealed === "boolean"));
+  const [round, setRound] = useGameSessionState<TwoTruthsSecretRound | null>("two-truths-lie", locale, "round", null, (value): value is TwoTruthsSecretRound | null => value === null || isTwoTruthsRound(value));
   const [voters, setVoters] = useGameSessionState("two-truths-lie", locale, "voters", [], isStringList);
   const [voter, setVoter] = useGameSessionState("two-truths-lie", locale, "voter", 0, isSafeInteger(0, 11));
   const [choice, setChoice] = useGameSessionState<number | null>("two-truths-lie", locale, "choice", null, (value): value is number | null => value === null || [0, 1, 2].includes(Number(value)), () => null);
