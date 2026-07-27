@@ -1,5 +1,6 @@
 import {
   errorResponse,
+  HttpError,
   isGameId,
   isLocale,
   jsonResponse,
@@ -15,6 +16,15 @@ export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
   try {
+    const ip = (request.headers.get("x-forwarded-for")?.split(",")[0] ??
+      request.headers.get("x-real-ip") ?? "unknown").trim();
+    if (!roomRepository().consumeCreate(ip)) {
+      throw new HttpError(
+        429,
+        "RATE_LIMITED",
+        "Too many rooms created. Try again shortly.",
+      );
+    }
     const body = await readJson(request);
     requireVersion(body);
     if (body.locale !== undefined && !isLocale(body.locale)) {

@@ -6,7 +6,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { RoomLobby } from "../src/components/RoomLobby";
 import { RoomClientError } from "../src/rooms/client";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  window.history.replaceState(null, "", "/");
+});
 
 describe("RoomLobby", () => {
   it("offers bilingual create and join forms for the selected game", async () => {
@@ -25,6 +28,7 @@ describe("RoomLobby", () => {
     await userEvent.click(screen.getByRole("button", { name: "Create room" }));
     expect(create).toHaveBeenCalledWith(
       expect.objectContaining({ hostName: "Host", gameId: "charades" }),
+      expect.any(AbortSignal),
     );
     await userEvent.click(screen.getByRole("tab", { name: "Join" }));
     expect(screen.getByLabelText("Room code")).toBeTruthy();
@@ -51,7 +55,7 @@ describe("RoomLobby", () => {
     );
     await userEvent.type(screen.getByLabelText("Your name"), "Guest");
     await userEvent.click(screen.getByRole("button", { name: "Join room" }));
-    expect(join).toHaveBeenCalledWith("ABC123", { name: "Guest" });
+    expect(join).toHaveBeenCalledWith("ABC123", { name: "Guest" }, expect.any(AbortSignal));
   });
 
   it("shows actionable localized recovery after an expired poll", async () => {
@@ -79,5 +83,41 @@ describe("RoomLobby", () => {
     expect(screen.getByRole("button", { name: "Create a new room" })).toBeTruthy();
     await userEvent.click(screen.getByRole("button", { name: "Back to games" }));
     expect(onExit).toHaveBeenCalled();
+  });
+
+  it("prevents duplicate submissions and ignores late responses", async () => {
+    let resolveCreate!: (value: unknown) => void;
+    const create = vi.fn(() => new Promise((resolve) => { resolveCreate = resolve; }));
+    render(<RoomLobby locale="en" gameId="charades" onExit={vi.fn()} api={{ create } as never} />);
+    await userEvent.type(screen.getByLabelText("Your name"), "Host");
+    const button = screen.getByRole("button", { name: "Create room" });
+    await userEvent.dblClick(button);
+    expect(create).toHaveBeenCalledTimes(1);
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+    cleanup();
+    resolveCreate({
+      code: "ABC123",
+      playerToken: "player-token-long",
+      hostToken: "host-token-long-value",
+      room: {},
+    });
+  });
+
+  it("implements roving keyboard tabs and focuses recovery status", async () => {
+    const api = {
+      join: vi.fn().mockRejectedValue(new RoomClientError("ROOM_NOT_FOUND", "missing", 404)),
+    };
+    render(<RoomLobby locale="en" gameId="charades" onExit={vi.fn()} api={api as never} />);
+    const createTab = screen.getByRole("tab", { name: "Create" });
+    createTab.focus();
+    await userEvent.keyboard("{ArrowRight}");
+    expect(document.activeElement).toBe(screen.getByRole("tab", { name: "Join" }));
+    expect(screen.getByRole("tabpanel")).toBeTruthy();
+    await userEvent.type(screen.getByLabelText("Your name"), "Guest");
+    await userEvent.type(screen.getByLabelText("Room code"), "ABC123");
+    await userEvent.click(screen.getByRole("button", { name: "Join room" }));
+    const heading = await screen.findByRole("heading", { name: "Room unavailable" });
+    expect(document.activeElement).toBe(heading);
+    expect(screen.getByRole("status")).toBeTruthy();
   });
 });

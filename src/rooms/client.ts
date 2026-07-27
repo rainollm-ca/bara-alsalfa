@@ -77,18 +77,20 @@ export function createRoomClient({
   }
 
   return {
-    create(input: { hostName: string; locale: Locale; gameId: GameId }) {
+    create(input: { hostName: string; locale: Locale; gameId: GameId }, signal?: AbortSignal) {
       return request("/api/rooms", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ contractVersion: ROOM_CONTRACT_VERSION, ...input }),
+        signal,
       });
     },
-    join(code: string, input: { name: string; playerToken?: string }) {
+    join(code: string, input: { name: string; playerToken?: string }, signal?: AbortSignal) {
       return request(`/api/rooms/${code.toUpperCase()}/join`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ contractVersion: ROOM_CONTRACT_VERSION, ...input }),
+        signal,
       });
     },
     state(code: string, playerToken: string) {

@@ -33,7 +33,8 @@ export type RoomErrorCode =
   | "HOST_ONLY"
   | "INVALID_ACTION"
   | "CODE_GENERATION_FAILED"
-  | "TOKEN_GENERATION_FAILED";
+  | "TOKEN_GENERATION_FAILED"
+  | "ROOM_CAPACITY";
 
 export class RoomError extends Error {
   constructor(
@@ -52,7 +53,35 @@ export type RoomRepositoryOptions = Readonly<{
   idFactory?: () => string;
   inactivityMs?: number;
   maxPlayers?: number;
+  maxRooms?: number;
+  storage?: RoomStorage;
 }>;
+
+export interface RoomStorage {
+  get(code: string): Room | undefined;
+  set(code: string, room: Room): void;
+  delete(code: string): void;
+  values(): Room[];
+  transaction<T>(operation: () => T): T;
+  consumeCreate?(ip: string, now: number, limit: number, windowMs: number): boolean;
+}
+
+class MemoryRoomStorage implements RoomStorage {
+  private readonly rooms = new Map<string, Room>();
+  private readonly creates = new Map<string, number[]>();
+  get(code: string) { return this.rooms.get(code); }
+  set(code: string, room: Room) { this.rooms.set(code, room); }
+  delete(code: string) { this.rooms.delete(code); }
+  values() { return [...this.rooms.values()]; }
+  transaction<T>(operation: () => T) { return operation(); }
+  consumeCreate(ip: string, now: number, limit: number, windowMs: number) {
+    const recent = (this.creates.get(ip) ?? []).filter((time) => time > now - windowMs);
+    if (recent.length >= limit) return false;
+    recent.push(now);
+    this.creates.set(ip, recent);
+    return true;
+  }
+}
 
 export type CreateRoomResult = Readonly<{
   code: string;
@@ -187,14 +216,14 @@ function freezeRoom(room: Room): Room {
 }
 
 export class RoomRepository {
-  private readonly rooms = new Map<string, Room>();
-  private readonly issuedTokens = new Set<string>();
+  private readonly storage: RoomStorage;
   private readonly clock: () => number;
   private readonly codeFactory: () => string;
   private readonly tokenFactory: () => string;
   private readonly idFactory: () => string;
   private readonly inactivityMs: number;
   private readonly maxPlayers: number;
+  private readonly maxRooms: number;
 
   constructor(options: RoomRepositoryOptions = {}) {
     this.clock = options.clock ?? Date.now;
@@ -203,12 +232,22 @@ export class RoomRepository {
     this.idFactory = options.idFactory ?? randomUUID;
     this.inactivityMs = options.inactivityMs ?? DEFAULT_INACTIVITY_MS;
     this.maxPlayers = options.maxPlayers ?? DEFAULT_MAX_PLAYERS;
-    if (this.inactivityMs <= 0 || this.maxPlayers < 1) {
+    this.maxRooms = options.maxRooms ?? 10_000;
+    this.storage = options.storage ?? new MemoryRoomStorage();
+    if (this.inactivityMs <= 0 || this.maxPlayers < 1 || this.maxRooms < 1) {
       throw new RangeError("Room limits must be positive.");
     }
   }
 
   create(input: CreateRoomInput): CreateRoomResult {
+    return this.storage.transaction(() => this.createInternal(input));
+  }
+
+  private createInternal(input: CreateRoomInput): CreateRoomResult {
+    this.expireInternal();
+    if (this.storage.values().length >= this.maxRooms) {
+      throw new RoomError("ROOM_CAPACITY", "The room service is at capacity.");
+    }
     const hostName = cleanName(input.hostName);
     const privateData =
       input.privateData === undefined ? undefined : copyJson(input.privateData);
@@ -244,11 +283,15 @@ export class RoomRepository {
       expiresAt: now + this.inactivityMs,
       revision: 1,
     });
-    this.rooms.set(code, room);
+    this.storage.set(code, room);
     return { code, hostToken, playerToken, playerId, room };
   }
 
   join(code: string, input: JoinRoomInput): JoinRoomResult {
+    return this.storage.transaction(() => this.joinInternal(code, input));
+  }
+
+  private joinInternal(code: string, input: JoinRoomInput): JoinRoomResult {
     const room = this.requireActive(code);
     const now = this.clock();
     if (input.playerToken) {
@@ -311,17 +354,25 @@ export class RoomRepository {
   }
 
   get(code: string): Room | undefined {
+    return this.storage.transaction(() => this.getInternal(code));
+  }
+
+  private getInternal(code: string): Room | undefined {
     const normalized = code.toUpperCase();
-    const room = this.rooms.get(normalized);
+    const room = this.storage.get(normalized);
     if (!room) return undefined;
     if (room.expiresAt <= this.clock()) {
-      this.rooms.delete(normalized);
+      this.storage.delete(normalized);
       return undefined;
     }
     return room;
   }
 
   applyAction(code: string, actorToken: string, action: RoomAction): Room {
+    return this.storage.transaction(() => this.applyActionInternal(code, actorToken, action));
+  }
+
+  private applyActionInternal(code: string, actorToken: string, action: RoomAction): Room {
     const room = this.requireActive(code);
     this.validateAction(action);
     const actor = room.players.find((player) =>
@@ -392,15 +443,42 @@ export class RoomRepository {
   }
 
   expire(): string[] {
+    return this.storage.transaction(() => this.expireInternal());
+  }
+
+  private expireInternal(): string[] {
     const now = this.clock();
     const expired: string[] = [];
-    for (const [code, room] of this.rooms) {
+    for (const room of this.storage.values()) {
+      const code = room.code;
       if (room.expiresAt <= now) {
-        this.rooms.delete(code);
+        this.storage.delete(code);
         expired.push(code);
       }
     }
     return expired;
+  }
+
+  touch(code: string, playerToken: string): Room {
+    return this.storage.transaction(() => {
+      const room = this.requireActive(code);
+      const now = this.clock();
+      const player = room.players.find((candidate) =>
+        constantTimeTokenEqual(candidate.playerToken, playerToken),
+      );
+      if (!player) throw new RoomError("INVALID_TOKEN", "Player token is not valid for this room.");
+      return this.update(room, {
+        players: room.players.map((candidate) =>
+          candidate.id === player.id ? { ...candidate, lastSeenAt: now } : candidate,
+        ),
+      });
+    });
+  }
+
+  consumeCreate(ip: string, limit = 5, windowMs = 60_000): boolean {
+    return this.storage.transaction(() =>
+      this.storage.consumeCreate?.(ip, this.clock(), limit, windowMs) ?? true,
+    );
   }
 
   private applyGameAction(
@@ -437,23 +515,23 @@ export class RoomRepository {
     const now = this.clock();
     const updated = freezeRoom({
       ...room,
-      players: [...room.players],
-      events: [...room.events],
       ...patch,
+      players: [...(patch.players ?? room.players)],
+      events: [...(patch.events ?? room.events)].slice(-100),
       updatedAt: now,
       expiresAt: now + this.inactivityMs,
       revision: room.revision + 1,
     });
-    this.rooms.set(room.code, updated);
+    this.storage.set(room.code, updated);
     return updated;
   }
 
   private requireActive(code: string): Room {
     const normalized = code.toUpperCase();
-    const room = this.rooms.get(normalized);
+    const room = this.storage.get(normalized);
     if (!room) throw new RoomError("ROOM_NOT_FOUND", "Room does not exist.");
     if (room.expiresAt <= this.clock()) {
-      this.rooms.delete(normalized);
+      this.storage.delete(normalized);
       throw new RoomError("ROOM_EXPIRED", "Room has expired.");
     }
     return room;
@@ -462,7 +540,7 @@ export class RoomRepository {
   private uniqueCode(): string {
     for (let attempt = 0; attempt < GENERATION_ATTEMPTS; attempt += 1) {
       const code = this.codeFactory().toUpperCase();
-      if (CODE_PATTERN.test(code) && !this.rooms.has(code)) return code;
+      if (CODE_PATTERN.test(code) && !this.storage.get(code)) return code;
     }
     throw new RoomError(
       "CODE_GENERATION_FAILED",
@@ -476,9 +554,10 @@ export class RoomRepository {
       if (
         token.length >= 12 &&
         !excluded.has(token) &&
-        !this.issuedTokens.has(token)
+        !this.storage.values().some((room) =>
+          room.hostToken === token || room.players.some((player) => player.playerToken === token),
+        )
       ) {
-        this.issuedTokens.add(token);
         return token;
       }
     }

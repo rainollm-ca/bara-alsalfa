@@ -93,6 +93,23 @@ describe("room HTTP API", () => {
     expect(tooLarge.status).toBe(413);
   });
 
+  it("rate limits room creation by client IP", async () => {
+    for (let index = 0; index < 5; index += 1) {
+      expect((await createRoom(new Request("http://localhost/api/rooms", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-forwarded-for": "203.0.113.7" },
+        body: JSON.stringify({ contractVersion: 1, hostName: `Host ${index}` }),
+      }))).status).toBe(201);
+    }
+    const limited = await createRoom(new Request("http://localhost/api/rooms", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-forwarded-for": "203.0.113.7" },
+      body: JSON.stringify({ contractVersion: 1, hostName: "One too many" }),
+    }));
+    expect(limited.status).toBe(429);
+    expect((await limited.json()).error.code).toBe("RATE_LIMITED");
+  });
+
   it("rejects invalid codes and requires a valid player bearer token for state", async () => {
     const invalid = await joinRoom(
       jsonRequest("http://localhost/api/rooms/BAD/join", {
@@ -184,6 +201,35 @@ describe("room HTTP API", () => {
     );
     expect(response.status).toBe(410);
     expect((await response.json()).error.code).toBe("ROOM_EXPIRED");
+  });
+
+  it("extends expiry and last-seen time on an authenticated state poll", async () => {
+    let now = 2_000;
+    const repository = new RoomRepository({
+      clock: () => now,
+      inactivityMs: 100,
+      codeFactory: () => "POLL12",
+    });
+    resetRoomRepositoryForTests(repository);
+    const created = await (
+      await createRoom(jsonRequest("http://localhost/api/rooms", {
+        contractVersion: 1,
+        hostName: "Host",
+      }))
+    ).json();
+    now += 80;
+    const response = await getRoomState(
+      new Request(`http://localhost/api/rooms/${created.code}/state`, {
+        headers: { authorization: `Bearer ${created.playerToken}` },
+      }),
+      context(created.code),
+    );
+    const payload = await response.json();
+    expect(response.status).toBe(200);
+    expect(payload.room.self.lastSeenAt).toBe(2_080);
+    expect(payload.room.expiresAt).toBe(2_180);
+    now += 80;
+    expect(repository.get(created.code)).toBeDefined();
   });
 
   it("projects distinct private payloads only to their owner", async () => {

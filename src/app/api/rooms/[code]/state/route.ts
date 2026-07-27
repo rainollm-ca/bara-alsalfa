@@ -3,7 +3,7 @@ import {
   bearerToken,
   errorResponse,
   jsonResponse,
-  playerViewForActor,
+  touchedPlayerView,
 } from "../../../../../rooms/server";
 
 type Context = { params: Promise<{ code: string }> };
@@ -14,7 +14,7 @@ export async function GET(request: Request, { params }: Context) {
     const { code } = await params;
     return jsonResponse({
       contractVersion: ROOM_CONTRACT_VERSION,
-      room: playerViewForActor(code, token),
+      room: touchedPlayerView(code, token),
     });
   } catch (error) {
     return errorResponse(error);

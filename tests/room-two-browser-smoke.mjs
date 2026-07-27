@@ -1,7 +1,39 @@
 import { chromium } from "playwright-core";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { spawn } from "node:child_process";
 
-const baseUrl = process.env.ROOM_SMOKE_URL ?? "http://127.0.0.1:3000";
+const managedServer = !process.env.ROOM_SMOKE_URL;
+const port = process.env.ROOM_SMOKE_PORT ?? "3107";
+const baseUrl = process.env.ROOM_SMOKE_URL ?? `http://127.0.0.1:${port}`;
 const executablePath = process.env.CHROME_PATH ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+const dbPath = join(mkdtempSync(join(tmpdir(), "bara-room-smoke-")), "rooms.sqlite");
+let server;
+
+async function startServer() {
+  server = spawn("npm", ["start"], {
+    cwd: process.cwd(),
+    env: { ...process.env, PORT: port, ROOM_DB_PATH: dbPath },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    try {
+      if ((await fetch(baseUrl)).ok) return;
+    } catch {}
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error("Room smoke server did not become ready.");
+}
+
+async function stopServer() {
+  if (!server) return;
+  server.kill("SIGTERM");
+  await new Promise((resolve) => server.once("exit", resolve));
+  server = undefined;
+}
+
+if (managedServer) await startServer();
 const browser = await chromium.launch({ headless: true, executablePath });
 
 try {
@@ -17,6 +49,10 @@ try {
   const inviteUrl = host.url();
   if (!/[?&]room=[A-Z0-9]{6}/.test(inviteUrl)) throw new Error(`Invalid invite URL: ${inviteUrl}`);
 
+  if (managedServer) {
+    await stopServer();
+    await startServer();
+  }
   await guest.goto(inviteUrl);
   await guest.getByRole("button", { name: "EN" }).click();
   await guest.getByLabel("Your name").fill("Smoke Guest");
@@ -43,8 +79,10 @@ try {
     synchronizedPlayers: 2,
     synchronizedStatus: "playing",
     inviteUrlRoutedAtRoot: true,
+    persistedAcrossServerRestart: managedServer,
     credentialLeak: false,
   }));
 } finally {
   await browser.close();
+  await stopServer();
 }

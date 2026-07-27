@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Copy, Link2, Users } from "lucide-react";
 
 import { GAME_CATALOG } from "../games/catalog";
@@ -54,6 +54,21 @@ export function RoomLobby({ locale, gameId, initialCode, onExit, api: suppliedAp
   const [copied, setCopied] = useState(false);
   const game = GAME_CATALOG.find((candidate) => candidate.id === (room?.selectedGame ?? gameId));
   const [recovery, setRecovery] = useState<"expired" | "failed" | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const requestGeneration = useRef(0);
+  const activeRequest = useRef<AbortController | null>(null);
+  const createTabRef = useRef<HTMLButtonElement>(null);
+  const joinTabRef = useRef<HTMLButtonElement>(null);
+  const recoveryHeadingRef = useRef<HTMLHeadingElement>(null);
+
+  useEffect(() => () => {
+    requestGeneration.current += 1;
+    activeRequest.current?.abort();
+  }, []);
+
+  useEffect(() => {
+    if (recovery) recoveryHeadingRef.current?.focus();
+  }, [recovery]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -101,13 +116,20 @@ export function RoomLobby({ locale, gameId, initialCode, onExit, api: suppliedAp
   }, [api, session, t.expired, t.reconnecting]);
 
   async function create() {
+    if (submitting) return;
     setError("");
+    const generation = ++requestGeneration.current;
+    activeRequest.current?.abort();
+    const controller = new AbortController();
+    activeRequest.current = controller;
+    setSubmitting(true);
     try {
       if (!gameId) {
         setError(t.invalid);
         return;
       }
-      const result = await api.create({ hostName: name, locale, gameId });
+      const result = await api.create({ hostName: name, locale, gameId }, controller.signal);
+      if (generation !== requestGeneration.current) return;
       const next = {
         code: result.code!,
         name: name.trim(),
@@ -127,15 +149,25 @@ export function RoomLobby({ locale, gameId, initialCode, onExit, api: suppliedAp
       setSession(next);
       setRoom(result.room);
     } catch (reason) {
+      if (generation !== requestGeneration.current || controller.signal.aborted) return;
       setError(message(reason));
+    } finally {
+      if (generation === requestGeneration.current) setSubmitting(false);
     }
   }
 
   async function join() {
+    if (submitting) return;
     setError("");
+    const generation = ++requestGeneration.current;
+    activeRequest.current?.abort();
+    const controller = new AbortController();
+    activeRequest.current = controller;
+    setSubmitting(true);
     try {
       const normalized = code.trim().toUpperCase();
-      const result = await api.join(normalized, { name });
+      const result = await api.join(normalized, { name }, controller.signal);
+      if (generation !== requestGeneration.current) return;
       const next = { code: normalized, name: name.trim(), playerToken: result.playerToken! };
       if (typeof window !== "undefined") {
         try {
@@ -150,7 +182,14 @@ export function RoomLobby({ locale, gameId, initialCode, onExit, api: suppliedAp
       setSession(next);
       setRoom(result.room);
     } catch (reason) {
+      if (generation !== requestGeneration.current || controller.signal.aborted) return;
       setError(message(reason));
+      if (reason instanceof RoomClientError &&
+        (reason.code === "ROOM_EXPIRED" || reason.code === "ROOM_NOT_FOUND" || reason.code === "INVALID_TOKEN")) {
+        setRecovery(reason.code === "ROOM_EXPIRED" ? "expired" : "failed");
+      }
+    } finally {
+      if (generation === requestGeneration.current) setSubmitting(false);
     }
   }
 
@@ -172,8 +211,8 @@ export function RoomLobby({ locale, gameId, initialCode, onExit, api: suppliedAp
     return (
       <section className="roomLobby roomRecovery">
         <span aria-hidden="true">🔗</span>
-        <h1>{locale === "ar" ? "الغرفة غير متاحة" : "Room unavailable"}</h1>
-        <p>{recovery === "expired" ? t.expired : t.invalid}</p>
+        <h1 ref={recoveryHeadingRef} tabIndex={-1}>{locale === "ar" ? "الغرفة غير متاحة" : "Room unavailable"}</h1>
+        <p role="status" aria-live="assertive">{recovery === "expired" ? t.expired : t.invalid}</p>
         <button className="primaryButton" type="button" onClick={() => {
           setRecovery(null);
           setTab("join");
@@ -222,10 +261,20 @@ export function RoomLobby({ locale, gameId, initialCode, onExit, api: suppliedAp
       {game && <span className="roomGame">{game.emoji} {game.title[locale]}</span>}
       <h1>{t.title}</h1>
       <p>{t.intro}</p>
-      <div className="roomTabs" role="tablist">
-        {gameId && <button role="tab" aria-selected={tab === "create"} onClick={() => setTab("create")}>{t.create}</button>}
-        <button role="tab" aria-selected={tab === "join"} onClick={() => setTab("join")}>{t.join}</button>
+      <div className="roomTabs" role="tablist" aria-label={locale === "ar" ? "خيارات الغرفة" : "Room options"}
+        onKeyDown={(event) => {
+          if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+          event.preventDefault();
+          const next = event.key === "Home" ? "create" : event.key === "End" ? "join" :
+            tab === "create" ? "join" : "create";
+          if (next === "create" && !gameId) return;
+          setTab(next);
+          (next === "create" ? createTabRef : joinTabRef).current?.focus();
+        }}>
+        {gameId && <button ref={createTabRef} id="room-tab-create" aria-controls="room-panel" tabIndex={tab === "create" ? 0 : -1} role="tab" aria-selected={tab === "create"} onClick={() => setTab("create")}>{t.create}</button>}
+        <button ref={joinTabRef} id="room-tab-join" aria-controls="room-panel" tabIndex={tab === "join" ? 0 : -1} role="tab" aria-selected={tab === "join"} onClick={() => setTab("join")}>{t.join}</button>
       </div>
+      <div id="room-panel" role="tabpanel" aria-labelledby={tab === "create" ? "room-tab-create" : "room-tab-join"}>
       <label className="roomField">
         <span>{t.name}</span>
         <input value={name} maxLength={40} onChange={(event) => setName(event.target.value)} />
@@ -237,9 +286,10 @@ export function RoomLobby({ locale, gameId, initialCode, onExit, api: suppliedAp
         </label>
       )}
       {error && <p role="alert" className="validationMessage">{error}</p>}
-      <button className="primaryButton" disabled={!name.trim() || (tab === "join" && !/^[A-Z0-9]{6}$/.test(code))} onClick={tab === "create" ? create : join}>
+      <button className="primaryButton" disabled={submitting || !name.trim() || (tab === "join" && !/^[A-Z0-9]{6}$/.test(code))} onClick={tab === "create" ? create : join}>
         {tab === "create" ? t.createButton : t.joinButton}
       </button>
+      </div>
     </section>
   );
 }

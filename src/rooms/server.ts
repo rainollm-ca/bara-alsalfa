@@ -1,11 +1,22 @@
 import { GAME_CATALOG } from "../games/catalog";
+import { mkdirSync } from "node:fs";
+import { dirname, join } from "node:path";
 import type { GameId, Locale } from "../games/types";
 import { ROOM_CONTRACT_VERSION, type RoomAction } from "./contracts";
 import { toPlayerView } from "./playerView";
 import { RoomError, RoomRepository, constantTimeTokenEqual } from "./repository";
+import { SQLiteRoomStorage } from "./sqliteStorage";
 
 const MAX_BODY_BYTES = 64 * 1024;
-let repository = new RoomRepository();
+function defaultRepository() {
+  if (process.env.NODE_ENV === "test" || process.env.npm_lifecycle_event === "build") {
+    return new RoomRepository();
+  }
+  const path = process.env.ROOM_DB_PATH ?? join(process.cwd(), "data", "rooms.sqlite");
+  mkdirSync(dirname(path), { recursive: true });
+  return new RoomRepository({ storage: new SQLiteRoomStorage(path) });
+}
+let repository = defaultRepository();
 
 export function roomRepository() {
   return repository;
@@ -84,6 +95,10 @@ export function playerViewForActor(code: string, token: string) {
   return toPlayerView(room, player.playerToken);
 }
 
+export function touchedPlayerView(code: string, playerToken: string) {
+  return toPlayerView(repository.touch(normalizeCode(code), playerToken), playerToken);
+}
+
 export class HttpError extends Error {
   constructor(
     readonly status: number,
@@ -105,6 +120,7 @@ const roomStatuses: Record<string, number> = {
   INVALID_ACTION: 422,
   CODE_GENERATION_FAILED: 503,
   TOKEN_GENERATION_FAILED: 503,
+  ROOM_CAPACITY: 503,
 };
 
 export function jsonResponse(payload: unknown, status = 200) {
