@@ -2,21 +2,17 @@ import { chromium } from "playwright-core";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 
 const managedServer = !process.env.ROOM_SMOKE_URL;
+const restartContainer = process.env.ROOM_SMOKE_RESTART_CONTAINER;
 const port = process.env.ROOM_SMOKE_PORT ?? "3107";
 const baseUrl = process.env.ROOM_SMOKE_URL ?? `http://127.0.0.1:${port}`;
 const executablePath = process.env.CHROME_PATH ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const dbPath = join(mkdtempSync(join(tmpdir(), "bara-room-smoke-")), "rooms.sqlite");
 let server;
 
-async function startServer() {
-  server = spawn("npm", ["start"], {
-    cwd: process.cwd(),
-    env: { ...process.env, PORT: port, ROOM_DB_PATH: dbPath },
-    stdio: ["ignore", "pipe", "pipe"],
-  });
+async function waitForServer() {
   for (let attempt = 0; attempt < 100; attempt += 1) {
     try {
       if ((await fetch(baseUrl)).ok) return;
@@ -24,6 +20,15 @@ async function startServer() {
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   throw new Error("Room smoke server did not become ready.");
+}
+
+async function startServer() {
+  server = spawn("npm", ["start"], {
+    cwd: process.cwd(),
+    env: { ...process.env, PORT: port, ROOM_DB_PATH: dbPath },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  await waitForServer();
 }
 
 async function stopServer() {
@@ -52,6 +57,9 @@ try {
   if (managedServer) {
     await stopServer();
     await startServer();
+  } else if (restartContainer) {
+    execFileSync("docker", ["restart", restartContainer], { stdio: "ignore" });
+    await waitForServer();
   }
   await guest.goto(inviteUrl);
   await guest.getByRole("button", { name: "EN" }).click();
@@ -79,7 +87,7 @@ try {
     synchronizedPlayers: 2,
     synchronizedStatus: "playing",
     inviteUrlRoutedAtRoot: true,
-    persistedAcrossServerRestart: managedServer,
+    persistedAcrossServerRestart: managedServer || Boolean(restartContainer),
     credentialLeak: false,
   }));
 } finally {
