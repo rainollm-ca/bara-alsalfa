@@ -28,7 +28,7 @@ export function buildOutOfLoopRound(
   random: () => number = Math.random,
 ): GameRound {
   const cleanPlayers = normalizePlayers(players);
-  if (cleanPlayers.length < 3) throw new Error("At least 3 players are required.");
+  if (cleanPlayers.length < 3) throw new Error("تحتاج اللعبة إلى 3 لاعبين على الأقل");
   const outsiderIndex = Math.floor(random() * cleanPlayers.length);
   const word = category.words[Math.floor(random() * category.words.length)][locale];
   return {

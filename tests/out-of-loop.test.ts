@@ -32,4 +32,10 @@ describe("out of loop engine", () => {
       tied: true,
     });
   });
+
+  it("preserves the established Arabic minimum-player error", () => {
+    expect(() =>
+      buildOutOfLoopRound(["Noor", "Aya"], category, "en", () => 0),
+    ).toThrowError("تحتاج اللعبة إلى 3 لاعبين على الأقل");
+  });
 });
