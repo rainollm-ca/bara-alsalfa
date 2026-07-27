@@ -36,6 +36,8 @@ describe("timed action game components", () => {
     expect(screen.getByText((_, element) => element?.className === "roundSummary" && element.textContent?.includes("1 correct") === true)).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Skip" }));
     expect(screen.getByText((_, element) => element?.className === "roundSummary" && element.textContent?.includes("1 skipped") === true)).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Failed" }));
+    expect(screen.getByText((_, element) => element?.className === "roundSummary" && element.textContent?.includes("1 failed") === true)).toBeTruthy();
 
     vi.useFakeTimers();
     fireEvent.click(screen.getByRole("button", { name: "Pause timer" }));
