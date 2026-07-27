@@ -1,10 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Check, Eye, EyeOff, Plus, RotateCcw, Shuffle, Sparkles, Trash2, Users } from "lucide-react";
+import { GameLibrary, readStoredLocale, writeStoredLocale } from "../components/GameLibrary";
+import { SetupShell } from "../components/SetupShell";
+import { TopBar } from "../components/TopBar";
+import type { GameId, PlayMode } from "../games/types";
 import { buildRound, CATEGORIES, DEFAULT_PLAYERS, normalizePlayers, type GameRound, type Locale } from "../lib/game";
 
-type Screen = "home" | "setup" | "reveal" | "play" | "result";
+type Screen = "library" | "home" | "setup" | "reveal" | "play" | "result";
 
 const copy = {
   ar: {
@@ -45,7 +49,8 @@ const copy = {
 
 export default function Home() {
   const [locale, setLocale] = useState<Locale>("ar");
-  const [screen, setScreen] = useState<Screen>("home");
+  const [mode, setMode] = useState<PlayMode>("local");
+  const [screen, setScreen] = useState<Screen>("library");
   const [players, setPlayers] = useState(DEFAULT_PLAYERS);
   const [newName, setNewName] = useState("");
   const [categoryId, setCategoryId] = useState(CATEGORIES[0].id);
@@ -56,6 +61,17 @@ export default function Home() {
   const t = copy[locale];
 
   const category = useMemo(() => CATEGORIES.find((item) => item.id === categoryId)!, [categoryId]);
+
+  useEffect(() => setLocale(readStoredLocale(window.localStorage)), []);
+
+  function changeLocale(nextLocale: Locale) {
+    setLocale(nextLocale);
+    writeStoredLocale(nextLocale, window.localStorage);
+  }
+
+  function chooseGame(gameId: GameId) {
+    if (gameId === "out-of-loop") setScreen("home");
+  }
 
   function addPlayer() {
     const clean = newName.trim();
@@ -88,18 +104,22 @@ export default function Home() {
     <main className="shell" dir={locale === "ar" ? "rtl" : "ltr"}>
       <div className="ambient ambientOne" />
       <div className="ambient ambientTwo" />
-      <section className="appCard">
-        <header className="brand">
-          <div className="brandMark">ب</div>
-          <div>
-            <strong>{t.brand}</strong>
-            <span>{t.tagline}</span>
-          </div>
-          <div className="languageSwitch" aria-label="Language">
-            <button className={locale === "ar" ? "active" : ""} onClick={() => setLocale("ar")}>ع</button>
-            <button className={locale === "en" ? "active" : ""} onClick={() => setLocale("en")}>EN</button>
-          </div>
-        </header>
+      <section className={screen === "library" ? "appCard libraryCard" : "appCard"}>
+        <TopBar
+          locale={locale}
+          onLocaleChange={changeLocale}
+          onHome={() => setScreen("library")}
+          showBack={screen !== "library"}
+        />
+
+        {screen === "library" && (
+          <GameLibrary
+            locale={locale}
+            mode={mode}
+            onModeChange={setMode}
+            onChooseGame={chooseGame}
+          />
+        )}
 
         {screen === "home" && (
           <div className="hero">
@@ -118,7 +138,7 @@ export default function Home() {
         )}
 
         {screen === "setup" && (
-          <div className="panel">
+          <SetupShell title={t.who} hint={t.whoHint}>
             <div className="step"><span>1</span><div><h2>{t.who}</h2><p>{t.whoHint}</p></div></div>
             <div className="players">
               {players.map((name, index) => (
@@ -144,7 +164,7 @@ export default function Home() {
               ))}
             </div>
             <button className="primary" disabled={normalizePlayers(players).length < 3} onClick={startRound}>{t.assign} <Shuffle size={20} /></button>
-          </div>
+          </SetupShell>
         )}
 
         {screen === "reveal" && role && round && (
