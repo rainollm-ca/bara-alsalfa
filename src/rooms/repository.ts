@@ -28,6 +28,7 @@ export type RoomErrorCode =
   | "ROOM_EXPIRED"
   | "ROOM_FULL"
   | "INVALID_NAME"
+  | "INVALID_PAYLOAD"
   | "INVALID_TOKEN"
   | "HOST_ONLY"
   | "INVALID_ACTION"
@@ -91,7 +92,10 @@ export function constantTimeTokenEqual(left: string, right: string): boolean {
   return timingSafeEqual(leftBuffer, rightBuffer);
 }
 
-function cleanName(name: string): string {
+function cleanName(name: unknown): string {
+  if (typeof name !== "string") {
+    throw new RoomError("INVALID_NAME", "Player name must be a string.");
+  }
   const cleaned = name.trim();
   if (cleaned.length < 1 || cleaned.length > 40) {
     throw new RoomError("INVALID_NAME", "Player names must be 1–40 characters.");
@@ -99,8 +103,60 @@ function cleanName(name: string): string {
   return cleaned;
 }
 
-function copyJson(value: JsonValue | undefined): JsonValue | undefined {
-  return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
+function copyJson(
+  value: unknown,
+  seen: WeakSet<object> = new WeakSet(),
+): JsonValue {
+  if (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "boolean"
+  ) {
+    return value;
+  }
+  if (typeof value === "number") {
+    if (Number.isFinite(value)) return value;
+    throw new RoomError("INVALID_PAYLOAD", "JSON numbers must be finite.");
+  }
+  if (typeof value !== "object") {
+    throw new RoomError("INVALID_PAYLOAD", "Payload must contain only JSON values.");
+  }
+  if (seen.has(value)) {
+    throw new RoomError("INVALID_PAYLOAD", "Payload must not contain cycles.");
+  }
+  seen.add(value);
+  try {
+    if (Array.isArray(value)) {
+      return value.map((entry) => copyJson(entry, seen));
+    }
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) {
+      throw new RoomError(
+        "INVALID_PAYLOAD",
+        "Payload objects must be plain JSON objects.",
+      );
+    }
+    const clone: Record<string, JsonValue> = Object.create(null);
+    for (const key of Reflect.ownKeys(value)) {
+      if (typeof key !== "string") {
+        throw new RoomError(
+          "INVALID_PAYLOAD",
+          "Payload keys must be JSON strings.",
+        );
+      }
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (!descriptor || !("value" in descriptor)) {
+        throw new RoomError(
+          "INVALID_PAYLOAD",
+          "Payload must not contain accessors.",
+        );
+      }
+      clone[key] = copyJson(descriptor.value, seen);
+    }
+    return clone;
+  } finally {
+    seen.delete(value);
+  }
 }
 
 function deepFreezeJson(value: JsonValue | undefined): void {
@@ -153,6 +209,9 @@ export class RoomRepository {
   }
 
   create(input: CreateRoomInput): CreateRoomResult {
+    const hostName = cleanName(input.hostName);
+    const privateData =
+      input.privateData === undefined ? undefined : copyJson(input.privateData);
     const now = this.clock();
     const code = this.uniqueCode();
     const hostToken = this.uniqueToken();
@@ -160,14 +219,14 @@ export class RoomRepository {
     const playerId = this.idFactory();
     const host: RoomPlayer = {
       id: playerId,
-      name: cleanName(input.hostName),
+      name: hostName,
       isHost: true,
       joinedAt: now,
       lastSeenAt: now,
       playerToken,
       ...(input.privateData === undefined
         ? {}
-        : { privateData: copyJson(input.privateData) }),
+        : { privateData }),
     };
     const room = freezeRoom({
       contractVersion: ROOM_CONTRACT_VERSION,
@@ -219,19 +278,22 @@ export class RoomRepository {
     if (room.players.length >= this.maxPlayers) {
       throw new RoomError("ROOM_FULL", "This room has reached its player limit.");
     }
+    const name = cleanName(input.name);
+    const privateData =
+      input.privateData === undefined ? undefined : copyJson(input.privateData);
     const playerToken = this.uniqueToken(
       new Set([room.hostToken, ...room.players.map((player) => player.playerToken)]),
     );
     const player: RoomPlayer = {
       id: this.idFactory(),
-      name: cleanName(input.name),
+      name,
       isHost: false,
       joinedAt: now,
       lastSeenAt: now,
       playerToken,
       ...(input.privateData === undefined
         ? {}
-        : { privateData: copyJson(input.privateData) }),
+        : { privateData }),
     };
     const updated = this.update(room, {
       players: [...room.players, player],
@@ -261,6 +323,7 @@ export class RoomRepository {
 
   applyAction(code: string, actorToken: string, action: RoomAction): Room {
     const room = this.requireActive(code);
+    this.validateAction(action);
     const actor = room.players.find((player) =>
       constantTimeTokenEqual(player.playerToken, actorToken),
     );
@@ -355,7 +418,8 @@ export class RoomRepository {
     return this.update(room, {
       gameState: {
         revision: (room.gameState?.revision ?? 0) + 1,
-        publicData: copyJson(action.payload) ?? null,
+        publicData:
+          action.payload === undefined ? null : copyJson(action.payload),
       },
       events: [
         ...room.events,
@@ -426,5 +490,55 @@ export class RoomRepository {
 
   private invalidAction(message: string): never {
     throw new RoomError("INVALID_ACTION", message);
+  }
+
+  private validateAction(action: unknown): asserts action is RoomAction {
+    if (
+      action === null ||
+      typeof action !== "object" ||
+      !("type" in action) ||
+      typeof action.type !== "string"
+    ) {
+      return this.invalidAction("Action must have a string type.");
+    }
+    switch (action.type) {
+      case "lobby/select-game":
+        if (
+          !("gameId" in action) ||
+          typeof action.gameId !== "string" ||
+          ![
+            "category-challenge",
+            "out-of-loop",
+            "charades",
+            "forbidden-word",
+            "who-am-i",
+            "rapid-fire",
+            "most-likely-to",
+            "two-truths-lie",
+          ].includes(action.gameId)
+        ) {
+          return this.invalidAction("Select-game action requires a valid game ID.");
+        }
+        return;
+      case "lobby/start":
+      case "lobby/return":
+        return;
+      case "lobby/remove-player":
+        if (!("playerId" in action) || typeof action.playerId !== "string") {
+          return this.invalidAction("Remove-player action requires a player ID.");
+        }
+        return;
+      case "game/action":
+        if (
+          !("actionType" in action) ||
+          typeof action.actionType !== "string" ||
+          !action.actionType.trim()
+        ) {
+          return this.invalidAction("Game action type is required.");
+        }
+        return;
+      default:
+        return this.invalidAction("Unknown room action.");
+    }
   }
 }

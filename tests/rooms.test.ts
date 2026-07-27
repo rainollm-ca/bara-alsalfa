@@ -86,6 +86,63 @@ describe("RoomRepository", () => {
     expect(second.playerToken).toBe("secure-token-d");
   });
 
+  it("validates create input before reserving tokens", () => {
+    const tokens = ["secure-token-a", "secure-token-b"];
+    const cyclic: Record<string, unknown> = {};
+    cyclic.self = cyclic;
+    const { repository } = harness({
+      tokenFactory: () => tokens.shift() ?? "unexpected-token",
+    });
+
+    expect(() =>
+      repository.create({ hostName: 42 as unknown as string }),
+    ).toThrowError(expect.objectContaining({ code: "INVALID_NAME" }));
+    expect(() =>
+      repository.create({
+        hostName: "Host",
+        privateData: cyclic as never,
+      }),
+    ).toThrowError(expect.objectContaining({ code: "INVALID_PAYLOAD" }));
+    expect(() =>
+      repository.create({
+        hostName: "Host",
+        privateData: { createdAt: new Date() } as never,
+      }),
+    ).toThrowError(expect.objectContaining({ code: "INVALID_PAYLOAD" }));
+
+    const created = repository.create({ hostName: "Valid host" });
+    expect(created.hostToken).toBe("secure-token-a");
+    expect(created.playerToken).toBe("secure-token-b");
+  });
+
+  it("validates join input before reserving its player token", () => {
+    const tokens = [
+      "secure-token-host",
+      "secure-token-player",
+      "secure-token-guest",
+    ];
+    const cyclic: Record<string, unknown> = {};
+    cyclic.self = cyclic;
+    const { repository } = harness({
+      tokenFactory: () => tokens.shift() ?? "unexpected-token",
+    });
+    const created = repository.create({ hostName: "Host" });
+
+    expect(() =>
+      repository.join(created.code, { name: null as unknown as string }),
+    ).toThrowError(expect.objectContaining({ code: "INVALID_NAME" }));
+    expect(() =>
+      repository.join(created.code, {
+        name: "Guest",
+        privateData: cyclic as never,
+      }),
+    ).toThrowError(expect.objectContaining({ code: "INVALID_PAYLOAD" }));
+
+    expect(repository.join(created.code, { name: "Valid guest" }).playerToken).toBe(
+      "secure-token-guest",
+    );
+  });
+
   it("expires inactive rooms and does not refresh activity for reads", () => {
     const { repository, advance } = harness();
     const created = repository.create({ hostName: "Host" });
@@ -168,5 +225,38 @@ describe("RoomRepository", () => {
     expect(JSON.stringify(view)).not.toContain(created.hostToken);
     expect(JSON.stringify(view)).not.toContain(joined.playerToken);
     expect(() => toPlayerView(room, "not-a-token")).toThrow(RoomError);
+  });
+
+  it("rejects malformed, unknown, and non-JSON actions with typed errors", () => {
+    const { repository } = harness();
+    const created = repository.create({ hostName: "Host" });
+    const malformedActions = [
+      {},
+      { type: 42 },
+      { type: "unknown/action" },
+    ] as unknown as RoomAction[];
+
+    for (const action of malformedActions) {
+      expect(() =>
+        repository.applyAction(created.code, created.hostToken, action),
+      ).toThrowError(expect.objectContaining({ code: "INVALID_ACTION" }));
+    }
+
+    repository.applyAction(created.code, created.hostToken, {
+      type: "lobby/select-game",
+      gameId: "charades",
+    });
+    repository.applyAction(created.code, created.hostToken, {
+      type: "lobby/start",
+    });
+    const cyclic: Record<string, unknown> = {};
+    cyclic.self = cyclic;
+    expect(() =>
+      repository.applyAction(created.code, created.playerToken, {
+        type: "game/action",
+        actionType: "submit",
+        payload: cyclic as never,
+      }),
+    ).toThrowError(expect.objectContaining({ code: "INVALID_PAYLOAD" }));
   });
 });
