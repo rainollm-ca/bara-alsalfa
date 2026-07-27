@@ -6,6 +6,7 @@ import {
   answerQuestion,
   buildBoard,
 } from "../src/games/engines/categoryChallenge";
+import { restoreCategoryController } from "../src/components/games/CategoryChallenge";
 
 const selectedCategoryIds = CATEGORY_CHALLENGE_CATEGORIES.slice(0, 6).map(
   (category) => category.id,
@@ -125,5 +126,51 @@ describe("immutable game updates", () => {
     expect(updated).toEqual({ teamOne: 500, teamTwo: 500 });
     expect(updated).not.toBe(scores);
     expect(scores).toEqual({ teamOne: 300, teamTwo: 500 });
+  });
+});
+
+describe("persisted Category Challenge controller validation", () => {
+  const board = buildBoard(selectedCategoryIds, () => 0);
+  const storedBoard = { ...board, usedQuestionIds: [...board.usedQuestionIds] };
+  const baseState = {
+    selectedCategoryIds,
+    teamNames: { teamOne: "One", teamTwo: "Two" },
+    scores: { teamOne: 0, teamTwo: 0 },
+    usedQuestionIds: [],
+    activeQuestion: null,
+  };
+
+  it("restores a deeply valid board and covers a revealed active question", () => {
+    const question = board.categories[0].questions[0];
+    const restored = restoreCategoryController({
+      board: storedBoard,
+      categoryState: {
+        ...baseState,
+        usedQuestionIds: [question.question.id],
+        activeQuestion: {
+          questionId: question.question.id,
+          points: question.points,
+          revealed: true,
+          timer: { status: "paused", remainingMs: 20_000, startedAt: null },
+        },
+      },
+    });
+    expect(restored?.state.activeQuestion?.revealed).toBe(false);
+    expect(restored?.board?.usedQuestionIds).toBeInstanceOf(Set);
+  });
+
+  it.each([
+    ["null controller", null],
+    ["missing active shape", { board: storedBoard, categoryState: { ...baseState, activeQuestion: {} } }],
+    ["wrong board array", { board: { ...storedBoard, categories: null }, categoryState: baseState }],
+    ["serialized Set object", { board: { ...storedBoard, usedQuestionIds: {} }, categoryState: baseState }],
+    ["wrong used IDs", { board: storedBoard, categoryState: { ...baseState, usedQuestionIds: ["unknown"] } }],
+    ["NaN score", { board: storedBoard, categoryState: { ...baseState, scores: { teamOne: Number.NaN, teamTwo: 0 } } }],
+    ["huge score", { board: storedBoard, categoryState: { ...baseState, scores: { teamOne: 1e99, teamTwo: 0 } } }],
+    ["bad timer enum", { board: storedBoard, categoryState: { ...baseState, activeQuestion: { questionId: board.categories[0].questions[0].question.id, points: 100, revealed: false, timer: { status: "oops", remainingMs: 5, startedAt: null } } } }],
+    ["future timestamp", { board: storedBoard, categoryState: { ...baseState, activeQuestion: { questionId: board.categories[0].questions[0].question.id, points: 100, revealed: false, timer: { status: "running", remainingMs: 5, startedAt: Date.now() + 100_000 } } } }],
+  ])("rejects %s without throwing", (_label, payload) => {
+    expect(() => restoreCategoryController(payload)).not.toThrow();
+    expect(restoreCategoryController(payload)).toBeNull();
   });
 });

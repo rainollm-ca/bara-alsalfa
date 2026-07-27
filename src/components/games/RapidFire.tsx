@@ -7,7 +7,7 @@ import { createPromptDeck, drawPrompt, scoreRapidFire, type PromptDeck } from ".
 import type { Locale } from "../../lib/game";
 import { Final } from "./Charades";
 import { TimedRound } from "./TimedRound";
-import { isBoolean, isStringList, isSafeInteger, useGameSessionState } from "../../lib/useGameSessionState";
+import { isBoolean, isFiniteScoreRecord, isPromptDrawState, isStringList, isSafeInteger, useGameSessionState } from "../../lib/useGameSessionState";
 
 type Props = { locale: Locale; roundSeconds?: number; roundsPerTeam?: number; prompts?: readonly ActionPrompt[]; random?: () => number };
 
@@ -16,14 +16,13 @@ export function RapidFire({ locale, roundSeconds: initialSeconds = 60, roundsPer
   const [seconds, setSeconds] = useGameSessionState("rapid-fire", locale, "seconds", initialSeconds, isSafeInteger(30, 90));
   const [screen, setScreen] = useGameSessionState<"setup" | "round" | "final">("rapid-fire", locale, "screen", "setup", (value): value is "setup" | "round" | "final" => ["setup", "round", "final"].includes(String(value)));
   const [turn, setTurn] = useGameSessionState("rapid-fire", locale, "turn", 0, isSafeInteger(0, 31));
-  const scoresValidator = (value: unknown): value is Record<string, number> => typeof value === "object" && value !== null && !Array.isArray(value);
-  const [scores, setScores] = useGameSessionState("rapid-fire", locale, "scores", {}, scoresValidator);
+  const [scores, setScores] = useGameSessionState("rapid-fire", locale, "scores", {}, isFiniteScoreRecord);
   const [correct, setCorrect] = useGameSessionState("rapid-fire", locale, "correct", 0, isSafeInteger(0, 1000));
   const [passed, setPassed] = useGameSessionState("rapid-fire", locale, "passed", 0, isSafeInteger(0, 1000));
   const [expired, setExpired] = useGameSessionState("rapid-fire", locale, "expired", false, isBoolean);
   const [drawState, setDrawState] = useGameSessionState<{ prompt: ActionPrompt | null; deck: PromptDeck }>("rapid-fire", locale, "drawState",
     () => drawPrompt(createPromptDeck(prompts, random)),
-    (value): value is { prompt: ActionPrompt | null; deck: PromptDeck } => typeof value === "object" && value !== null && typeof (value as { deck?: unknown }).deck === "object",
+    (value): value is { prompt: ActionPrompt | null; deck: PromptDeck } => isPromptDrawState(value),
   );
   const advanceRef = useRef<HTMLButtonElement>(null);
   const t = locale === "ar"

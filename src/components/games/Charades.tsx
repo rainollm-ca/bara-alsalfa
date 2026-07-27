@@ -6,7 +6,7 @@ import { CHARADES_PROMPTS, type ActionPrompt } from "../../games/content/actionG
 import { createPromptDeck, drawPrompt, scoreCharades, type PromptDeck } from "../../games/engines/actionGames";
 import type { Locale } from "../../lib/game";
 import { TimedRound } from "./TimedRound";
-import { isBoolean, isStringList, isSafeInteger, useGameSessionState } from "../../lib/useGameSessionState";
+import { isBoolean, isFiniteScoreRecord, isPromptDrawState, isStringList, isSafeInteger, useGameSessionState } from "../../lib/useGameSessionState";
 
 type Props = { locale: Locale; roundSeconds?: number; roundsPerTeam?: number; prompts?: readonly ActionPrompt[]; random?: () => number };
 type Summary = { correct: number; skipped: number; failed: number };
@@ -19,10 +19,10 @@ export function Charades({ locale, roundSeconds: initialSeconds = 60, roundsPerT
   const [turn, setTurn] = useGameSessionState("charades", locale, "turn", 0, isSafeInteger(0, 31));
   const [drawState, setDrawState] = useGameSessionState<{ prompt: ActionPrompt | null; deck: PromptDeck }>("charades", locale, "drawState",
     () => drawPrompt(createPromptDeck(prompts, random)),
-    (value): value is { prompt: ActionPrompt | null; deck: PromptDeck } => typeof value === "object" && value !== null && typeof (value as { deck?: unknown }).deck === "object",
+    (value): value is { prompt: ActionPrompt | null; deck: PromptDeck } => isPromptDrawState(value),
   );
-  const [scores, setScores] = useGameSessionState<Record<string, number>>("charades", locale, "scores", {}, (value): value is Record<string, number> => typeof value === "object" && value !== null && !Array.isArray(value));
-  const [summary, setSummary] = useGameSessionState<Summary>("charades", locale, "summary", { correct: 0, skipped: 0, failed: 0 }, (value): value is Summary => typeof value === "object" && value !== null && ["correct", "skipped", "failed"].every((key) => Number.isInteger((value as Record<string, unknown>)[key])));
+  const [scores, setScores] = useGameSessionState<Record<string, number>>("charades", locale, "scores", {}, isFiniteScoreRecord);
+  const [summary, setSummary] = useGameSessionState<Summary>("charades", locale, "summary", { correct: 0, skipped: 0, failed: 0 }, (value): value is Summary => typeof value === "object" && value !== null && ["correct", "skipped", "failed"].every((key) => Number.isInteger((value as Record<string, unknown>)[key]) && Number((value as Record<string, unknown>)[key]) >= 0 && Number((value as Record<string, unknown>)[key]) <= 1000));
   const [expired, setExpired] = useGameSessionState("charades", locale, "expired", false, isBoolean);
   const advanceRef = useRef<HTMLButtonElement>(null);
   const t = locale === "ar"

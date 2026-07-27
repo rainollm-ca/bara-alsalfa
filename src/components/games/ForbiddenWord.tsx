@@ -7,7 +7,7 @@ import { createPromptDeck, drawPrompt, recordForbiddenWordViolation, type Prompt
 import type { Locale } from "../../lib/game";
 import { Final } from "./Charades";
 import { TimedRound } from "./TimedRound";
-import { isBoolean, isStringList, isSafeInteger, useGameSessionState } from "../../lib/useGameSessionState";
+import { isBoolean, isFiniteScoreRecord, isPromptDrawState, isStringList, isSafeInteger, useGameSessionState } from "../../lib/useGameSessionState";
 
 type Props = { locale: Locale; roundSeconds?: number; roundsPerTeam?: number; prompts?: readonly ForbiddenWordPrompt[]; random?: () => number };
 
@@ -16,10 +16,10 @@ export function ForbiddenWord({ locale, roundSeconds: initialSeconds = 60, round
   const [seconds, setSeconds] = useGameSessionState("forbidden-word", locale, "seconds", initialSeconds, isSafeInteger(30, 90));
   const [screen, setScreen] = useGameSessionState<"setup" | "round" | "final">("forbidden-word", locale, "screen", "setup", (value): value is "setup" | "round" | "final" => ["setup", "round", "final"].includes(String(value)));
   const [turn, setTurn] = useGameSessionState("forbidden-word", locale, "turn", 0, isSafeInteger(0, 31));
-  const [scores, setScores] = useGameSessionState<Record<string, number>>("forbidden-word", locale, "scores", {}, (value): value is Record<string, number> => typeof value === "object" && value !== null && !Array.isArray(value));
+  const [scores, setScores] = useGameSessionState<Record<string, number>>("forbidden-word", locale, "scores", {}, isFiniteScoreRecord);
   const [drawState, setDrawState] = useGameSessionState<{ prompt: ForbiddenWordPrompt | null; deck: PromptDeck }>("forbidden-word", locale, "drawState",
     () => drawPrompt(createPromptDeck(prompts, random)) as { prompt: ForbiddenWordPrompt; deck: PromptDeck },
-    (value): value is { prompt: ForbiddenWordPrompt | null; deck: PromptDeck } => typeof value === "object" && value !== null && typeof (value as { deck?: unknown }).deck === "object",
+    (value): value is { prompt: ForbiddenWordPrompt | null; deck: PromptDeck } => isPromptDrawState(value),
   );
   const [points, setPoints] = useGameSessionState("forbidden-word", locale, "points", 0, isSafeInteger(0, 1000));
   const [violations, setViolations] = useGameSessionState("forbidden-word", locale, "violations", 0, isSafeInteger(0, 1000));

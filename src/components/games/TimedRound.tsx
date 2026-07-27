@@ -27,9 +27,13 @@ export function TimedRound({ seconds, locale, resetKey, onExpire, children, game
   const isTimerState = (value: unknown): value is TimerState => {
     if (!value || typeof value !== "object") return false;
     const timer = value as Partial<TimerState>;
-    return ["ready", "running", "paused", "expired"].includes(String(timer.status)) &&
-      typeof timer.remainingMs === "number" && timer.remainingMs >= 0 && timer.remainingMs <= seconds * 1_000 &&
-      (timer.startedAt === null || (typeof timer.startedAt === "number" && timer.startedAt <= Date.now() + 60_000));
+    if (!["ready", "running", "paused", "expired"].includes(String(timer.status)) ||
+      typeof timer.remainingMs !== "number" || !Number.isFinite(timer.remainingMs) ||
+      timer.remainingMs < 0 || timer.remainingMs > seconds * 1_000) return false;
+    return timer.status === "running"
+      ? typeof timer.startedAt === "number" && Number.isFinite(timer.startedAt) &&
+          timer.startedAt >= Date.now() - 7 * 86_400_000 && timer.startedAt <= Date.now() + 60_000
+      : timer.startedAt === null;
   };
   const [timer, setTimer] = useGameSessionState<TimerState>(gameId, locale, "timer", {
     status: "ready",

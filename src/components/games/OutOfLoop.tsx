@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Check, Eye, EyeOff, RotateCcw, Shuffle, Sparkles, Users } from "lucide-react";
 import { CategorySelector, PlayerNamesField, SetupShell, validateSetup } from "../SetupShell";
 import { buildRound, calculateVote, CATEGORIES, DEFAULT_PLAYERS, normalizePlayers, type GameRound, type Locale } from "../../lib/game";
-import { isBoolean, isShortString, isStringList, isSafeInteger, useGameSessionState } from "../../lib/useGameSessionState";
+import { isBoolean, isLocalizedText, isPlainRecord, isShortString, isStringList, isSafeInteger, useGameSessionState } from "../../lib/useGameSessionState";
 
 type Screen = "home" | "setup" | "reveal" | "play" | "vote-pass" | "vote" | "result";
 
@@ -56,12 +56,17 @@ export function OutOfLoop({ locale }: OutOfLoopProps) {
   const [players, setPlayers] = useGameSessionState("out-of-loop", locale, "players", DEFAULT_PLAYERS, isStringList);
   const [newName, setNewName] = useState("");
   const [categoryId, setCategoryId] = useGameSessionState("out-of-loop", locale, "categoryId", CATEGORIES[0].id, (value): value is string => isShortString(value) && CATEGORIES.some((item) => item.id === value));
-  const [round, setRound] = useGameSessionState<GameRound | null>("out-of-loop", locale, "round", null, (value): value is GameRound | null => value === null || (typeof value === "object" && value !== null && Array.isArray((value as GameRound).roles) && (value as GameRound).roles.length >= 3));
+  const [round, setRound] = useGameSessionState<GameRound | null>("out-of-loop", locale, "round", null, (value): value is GameRound | null => {
+    if (value === null) return true;
+    if (!isPlainRecord(value) || !isPlainRecord(value.category) || !isShortString(value.categoryTitle) || !isShortString(value.word) || !isShortString(value.outsider) || !Array.isArray(value.roles) || value.roles.length < 3 || value.roles.length > 12) return false;
+    if (!isShortString(value.category.id) || !isLocalizedText(value.category.title) || !Array.isArray(value.category.words) || value.category.words.length > 100 || !value.category.words.every(isLocalizedText)) return false;
+    return value.roles.every((role) => isPlainRecord(role) && isShortString(role.player) && typeof role.isOutsider === "boolean" && (role.word === null || isShortString(role.word)));
+  });
   const [revealIndex, setRevealIndex] = useGameSessionState("out-of-loop", locale, "revealIndex", 0, isSafeInteger(0, 11));
   const [revealed, setRevealed] = useGameSessionState("out-of-loop", locale, "revealed", false, isBoolean, () => false);
   const [suspect, setSuspect] = useGameSessionState("out-of-loop", locale, "suspect", "", isShortString, () => "");
   const [voteIndex, setVoteIndex] = useGameSessionState("out-of-loop", locale, "voteIndex", 0, isSafeInteger(0, 11));
-  const [votes, setVotes] = useGameSessionState<Record<string, string>>("out-of-loop", locale, "votes", {}, (value): value is Record<string, string> => typeof value === "object" && value !== null && !Array.isArray(value));
+  const [votes, setVotes] = useGameSessionState<Record<string, string>>("out-of-loop", locale, "votes", {}, (value): value is Record<string, string> => isPlainRecord(value) && Object.keys(value).length <= 12 && Object.values(value).every(isShortString));
   const voteHeadingRef = useRef<HTMLHeadingElement>(null);
   const resultAnnouncementRef = useRef<HTMLParagraphElement>(null);
   useEffect(() => {

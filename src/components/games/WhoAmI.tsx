@@ -5,13 +5,13 @@ import { PlayerNamesField, SetupShell, normalizeSetupNames, validateSetup } from
 import { WHO_AM_I_PROMPTS, type ActionPrompt } from "../../games/content/actionGames";
 import { assignPrivateIdentities } from "../../games/engines/actionGames";
 import type { Locale } from "../../lib/game";
-import { isBoolean, isStringList, isSafeInteger, useGameSessionState } from "../../lib/useGameSessionState";
+import { isActionPrompt, isBoolean, isPlainRecord, isStringList, isSafeInteger, useGameSessionState } from "../../lib/useGameSessionState";
 
 type Props = { locale: Locale; prompts?: readonly ActionPrompt[]; random?: () => number };
 
 export function WhoAmI({ locale, prompts = WHO_AM_I_PROMPTS, random = Math.random }: Props) {
   const [players, setPlayers] = useGameSessionState("who-am-i", locale, "players", [], isStringList), [name, setName] = useState("");
-  const [identities, setIdentities] = useGameSessionState<ReturnType<typeof assignPrivateIdentities>>("who-am-i", locale, "identities", {}, (value): value is ReturnType<typeof assignPrivateIdentities> => typeof value === "object" && value !== null && !Array.isArray(value));
+  const [identities, setIdentities] = useGameSessionState<ReturnType<typeof assignPrivateIdentities>>("who-am-i", locale, "identities", {}, (value): value is ReturnType<typeof assignPrivateIdentities> => isPlainRecord(value) && Object.keys(value).length <= 12 && Object.values(value).every(isActionPrompt));
   const [index, setIndex] = useGameSessionState("who-am-i", locale, "index", 0, isSafeInteger(0, 11));
   const [revealed, setRevealed] = useGameSessionState("who-am-i", locale, "revealed", false, isBoolean, () => false);
   const [playing, setPlaying] = useGameSessionState("who-am-i", locale, "playing", false, isBoolean);

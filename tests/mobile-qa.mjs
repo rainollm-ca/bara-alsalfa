@@ -19,6 +19,8 @@ async function reservePort() {
 const port = process.env.QA_URL ? null : await reservePort();
 const baseUrl = process.env.QA_URL ?? `http://127.0.0.1:${port}`;
 const outputDir = new URL("../outputs/mobile-qa/", import.meta.url);
+const qaMode = process.env.QA_MODE ?? "mobile";
+assert.ok(["mobile", "full-flow"].includes(qaMode), `Unknown QA_MODE: ${qaMode}`);
 const viewports = [
   { width: 360, height: 800 },
   { width: 390, height: 844 },
@@ -284,6 +286,17 @@ async function runFullFlowQa(browser) {
     await reloadAndResume(page, `who-am-i covered ${locale.id}`);
     assert.ok(await page.locator(".secretCard").isVisible());
     await assertNoOverflow(page, `who-am-i restore ${locale.id}`);
+    for (const viewer of ["One", "Two"]) {
+      await page.locator(".secretCard").click();
+      const identityCard = page.locator('[data-testid="private-identity"]');
+      await identityCard.waitFor();
+      assert.doesNotMatch(await identityCard.textContent(), new RegExp(`(^|\\s)${viewer}($|\\s)`));
+      assert.ok(await identityCard.locator("h2").first().evaluate((heading) => document.activeElement === heading));
+      await assertNoOverflow(page, `who-am-i viewer ${viewer} ${locale.id}`);
+      await page.locator(".privateReveal .primary").click();
+    }
+    assert.ok(await page.locator(".identityPlay").isVisible());
+    await assertNoOverflow(page, `who-am-i play ${locale.id}`);
 
     // Most Likely To: covered restore, then all private votes and result.
     await page.getByRole("button", { name: locale.id === "ar" ? "المكتبة" : "Game library" }).click();
@@ -472,20 +485,23 @@ server?.stderr.on("data", (chunk) => {
 
 try {
   await waitForServer(baseUrl, server);
-  await validatePwaRoutes();
+  if (qaMode === "mobile") await validatePwaRoutes();
   const browser = await chromium.launch({
     executablePath: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
     headless: true,
   });
   try {
-    await runMobileMatrix(browser);
-    for (const locale of locales) await captureCategoryBoard(browser, locale);
-    await runOfflineQa(browser);
-    await runFullFlowQa(browser);
+    if (qaMode === "mobile") {
+      await runMobileMatrix(browser);
+      for (const locale of locales) await captureCategoryBoard(browser, locale);
+      await runOfflineQa(browser);
+    } else {
+      await runFullFlowQa(browser);
+    }
   } finally {
     await browser.close();
   }
-  console.log("mobile bilingual PWA QA passed");
+  console.log(`${qaMode} bilingual QA passed`);
 } catch (error) {
   if (serverError) console.error(serverError);
   throw error;

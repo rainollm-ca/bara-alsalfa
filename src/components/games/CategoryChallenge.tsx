@@ -7,7 +7,7 @@ import { SetupShell } from "../SetupShell";
 import { CATEGORY_CHALLENGE_CATEGORIES } from "../../games/content/categoryChallenge";
 import { buildBoard, type CategoryChallengeBoard } from "../../games/engines/categoryChallenge";
 import type { Locale } from "../../lib/game";
-import { getGameStorage, useGameSessionState } from "../../lib/useGameSessionState";
+import { getGameStorage } from "../../lib/useGameSessionState";
 import { parseSavedSession, serializeSavedSession, SESSION_KEY } from "../../lib/session";
 
 type TeamId = "teamOne" | "teamTwo";
@@ -30,6 +30,49 @@ export type CategoryChallengeState = {
   usedQuestionIds: Set<string>;
   activeQuestion: ActiveQuestion | null;
 };
+
+type StoredCategoryState = Omit<CategoryChallengeState, "usedQuestionIds"> & { usedQuestionIds: string[] };
+type StoredCategoryBoard = Omit<CategoryChallengeBoard, "usedQuestionIds"> & { usedQuestionIds: string[] };
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
+const isBoundedText = (value: unknown, max = 300): value is string => typeof value === "string" && value.length > 0 && value.length <= max;
+const isLocalized = (value: unknown) => isRecord(value) && isBoundedText(value.ar) && isBoundedText(value.en);
+const isFiniteBounded = (value: unknown, min: number, max: number): value is number => typeof value === "number" && Number.isFinite(value) && value >= min && value <= max;
+const isStringArray = (value: unknown, max: number): value is string[] => Array.isArray(value) && value.length <= max && value.every((item) => isBoundedText(item, 100));
+
+function validateStoredBoard(value: unknown): value is StoredCategoryBoard | null {
+  if (value === null) return true;
+  if (!isRecord(value) || !Array.isArray(value.categories) || value.categories.length !== 6 || !isStringArray(value.usedQuestionIds, 30)) return false;
+  const categoryIds = new Set<string>(), questionIds = new Set<string>();
+  for (const category of value.categories) {
+    if (!isRecord(category) || !isBoundedText(category.categoryId, 100) || categoryIds.has(category.categoryId) || !isLocalized(category.title) || !Array.isArray(category.questions) || category.questions.length !== 5) return false;
+    categoryIds.add(category.categoryId);
+    for (const entry of category.questions) {
+      if (!isRecord(entry) || ![100, 200, 300, 400, 500].includes(Number(entry.points)) || typeof entry.answered !== "boolean" || !isRecord(entry.question)) return false;
+      const question = entry.question;
+      if (!isBoundedText(question.id, 100) || questionIds.has(question.id) || !isLocalized(question.question) || !isLocalized(question.answer)) return false;
+      questionIds.add(question.id);
+    }
+  }
+  return new Set(value.usedQuestionIds).size === value.usedQuestionIds.length && value.usedQuestionIds.every((id) => questionIds.has(id));
+}
+
+function validateStoredState(value: unknown, board: StoredCategoryBoard | null, now: number): value is StoredCategoryState {
+  if (!isRecord(value) || !isStringArray(value.selectedCategoryIds, 6) || new Set(value.selectedCategoryIds).size !== value.selectedCategoryIds.length || !isRecord(value.teamNames) || !isRecord(value.scores) || !isStringArray(value.usedQuestionIds, 30)) return false;
+  if (typeof value.teamNames.teamOne !== "string" || value.teamNames.teamOne.length > 24 || typeof value.teamNames.teamTwo !== "string" || value.teamNames.teamTwo.length > 24) return false;
+  if (!isFiniteBounded(value.scores.teamOne, -1_000_000, 1_000_000) || !isFiniteBounded(value.scores.teamTwo, -1_000_000, 1_000_000) || new Set(value.usedQuestionIds).size !== value.usedQuestionIds.length) return false;
+  if (board === null) return value.activeQuestion === null && value.usedQuestionIds.length === 0;
+  const categoryIds = board.categories.map((category) => category.categoryId);
+  const questionIds = new Set(board.categories.flatMap((category) => category.questions.map((entry) => entry.question.id)));
+  if (value.selectedCategoryIds.length !== 6 || value.selectedCategoryIds.some((id, index) => id !== categoryIds[index]) || value.usedQuestionIds.some((id) => !questionIds.has(id))) return false;
+  if (value.activeQuestion === null) return true;
+  const active = value.activeQuestion;
+  if (!isRecord(active) || !isBoundedText(active.questionId, 100) || !questionIds.has(active.questionId) || ![100, 200, 300, 400, 500].includes(Number(active.points)) || typeof active.revealed !== "boolean" || !isRecord(active.timer)) return false;
+  const timer = active.timer;
+  if (!["paused", "running", "stopped"].includes(String(timer.status)) || !isFiniteBounded(timer.remainingMs, 0, 30_000)) return false;
+  return timer.status === "running"
+    ? isFiniteBounded(timer.startedAt, now - 7 * 86_400_000, now + 60_000)
+    : timer.startedAt === null;
+}
 
 export function createCategoryChallengeState(): CategoryChallengeState {
   return {
@@ -149,6 +192,30 @@ export function categoryChallengeWinner(scores: Record<TeamId, number>): TeamId 
   return scores.teamOne > scores.teamTwo ? "teamOne" : "teamTwo";
 }
 
+export function restoreCategoryController(
+  controller: unknown,
+  now = Date.now(),
+): { state: CategoryChallengeState; board: CategoryChallengeBoard | null } | null {
+  try {
+    if (!isRecord(controller) || !validateStoredBoard(controller.board) || !validateStoredState(controller.categoryState, controller.board, now)) return null;
+    const storedBoard = controller.board;
+    const board = storedBoard === null ? null : { ...storedBoard, usedQuestionIds: new Set(storedBoard.usedQuestionIds) };
+    const stored = controller.categoryState;
+    const activeQuestion = stored.activeQuestion
+      ? {
+          ...stored.activeQuestion,
+          revealed: false,
+          timer: stored.activeQuestion.timer.status === "running" && remainingQuestionSeconds(stored.activeQuestion.timer, now) === 0
+            ? stopQuestionTimer(stored.activeQuestion.timer, now)
+            : stored.activeQuestion.timer,
+        }
+      : null;
+    return { state: { ...stored, usedQuestionIds: new Set(stored.usedQuestionIds), activeQuestion }, board };
+  } catch {
+    return null;
+  }
+}
+
 type Props = {
   locale: Locale;
   onExit: () => void;
@@ -159,34 +226,18 @@ type Props = {
 };
 
 export function CategoryChallenge({ locale, onExit, initialSession }: Props) {
+  const readSaved = () => {
+    const storage = getGameStorage();
+    const saved = storage ? parseSavedSession(storage.getItem(SESSION_KEY)) : null;
+    return saved?.gameId === "category-challenge"
+      ? restoreCategoryController(saved.controller)
+      : null;
+  };
   const [state, setState] = useState<CategoryChallengeState>(
-    () => {
-      if (initialSession?.state) return initialSession.state;
-      const storage = getGameStorage();
-      if (!storage) return createCategoryChallengeState();
-      const saved = parseSavedSession(storage.getItem(SESSION_KEY));
-      const value = saved?.gameId === "category-challenge" ? saved.controller.categoryState : null;
-      if (!value || typeof value !== "object") return createCategoryChallengeState();
-      const candidate = value as Omit<CategoryChallengeState, "usedQuestionIds"> & { usedQuestionIds: string[] };
-      if (!Array.isArray(candidate.selectedCategoryIds) || !Array.isArray(candidate.usedQuestionIds)) return createCategoryChallengeState();
-      const activeQuestion = candidate.activeQuestion
-        ? {
-            ...candidate.activeQuestion,
-            revealed: false,
-            timer: candidate.activeQuestion.timer.status === "running" && remainingQuestionSeconds(candidate.activeQuestion.timer, Date.now()) === 0
-              ? stopQuestionTimer(candidate.activeQuestion.timer, Date.now())
-              : candidate.activeQuestion.timer,
-          }
-        : null;
-      return { ...candidate, usedQuestionIds: new Set(candidate.usedQuestionIds), activeQuestion };
-    },
+    () => initialSession?.state ?? readSaved()?.state ?? createCategoryChallengeState(),
   );
-  const [board, setBoard] = useGameSessionState<CategoryChallengeBoard | null>(
-    "category-challenge",
-    locale,
-    "board",
-    () => initialSession?.board ?? null,
-    (value): value is CategoryChallengeBoard | null => value === null || (typeof value === "object" && value !== null && Array.isArray((value as CategoryChallengeBoard).categories)),
+  const [board, setBoard] = useState<CategoryChallengeBoard | null>(
+    () => initialSession?.board ?? readSaved()?.board ?? null,
   );
   const [now, setNow] = useState(0);
   const dialogTitleRef = useRef<HTMLHeadingElement>(null);
@@ -197,15 +248,16 @@ export function CategoryChallenge({ locale, onExit, initialSession }: Props) {
   useEffect(() => {
     const storage = getGameStorage();
     if (!storage) return;
-    const existing = parseSavedSession(storage.getItem(SESSION_KEY));
-    const controller = existing?.gameId === "category-challenge" ? existing.controller : {};
     storage.setItem(SESSION_KEY, serializeSavedSession({
       gameId: "category-challenge",
       locale,
       updatedAt: Date.now(),
-      controller: { ...controller, categoryState: { ...state, usedQuestionIds: [...state.usedQuestionIds] } },
+      controller: {
+        categoryState: { ...state, usedQuestionIds: [...state.usedQuestionIds] },
+        board: board ? { ...board, usedQuestionIds: [...board.usedQuestionIds] } : null,
+      },
     }));
-  }, [locale, state]);
+  }, [board, locale, state]);
 
   useEffect(() => {
     if (state.activeQuestion?.timer.status !== "running") return;
