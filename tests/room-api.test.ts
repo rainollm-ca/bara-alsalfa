@@ -57,6 +57,29 @@ describe("room HTTP API", () => {
     expect(JSON.stringify(joined.room)).not.toContain(joined.playerToken);
   });
 
+  it("returns ROOM_IN_PROGRESS for a late join but permits token reconnect", async () => {
+    const created = await (await createRoom(jsonRequest("http://localhost/api/rooms", {
+      contractVersion: 1, hostName: "Host", gameId: "category-challenge",
+    }))).json();
+    const guest = await (await joinRoom(jsonRequest(`http://localhost/api/rooms/${created.code}/join`, {
+      contractVersion: 1, name: "Guest",
+    }), context(created.code))).json();
+    await roomAction(jsonRequest(`http://localhost/api/rooms/${created.code}/action`, {
+      contractVersion: 1, action: { type: "lobby/start" },
+    }, created.hostToken), context(created.code));
+
+    const late = await joinRoom(jsonRequest(`http://localhost/api/rooms/${created.code}/join`, {
+      contractVersion: 1, name: "Late",
+    }), context(created.code));
+    expect(late.status).toBe(409);
+    expect((await late.json()).error.code).toBe("ROOM_IN_PROGRESS");
+    const reconnect = await joinRoom(jsonRequest(`http://localhost/api/rooms/${created.code}/join`, {
+      contractVersion: 1, name: "Ignored", playerToken: guest.playerToken,
+    }), context(created.code));
+    expect(reconnect.status).toBe(200);
+    expect((await reconnect.json()).reconnected).toBe(true);
+  });
+
   it("maps malformed input, unsupported versions, media types, and oversized bodies", async () => {
     const malformed = await createRoom(
       new Request("http://localhost/api/rooms", {
@@ -323,10 +346,13 @@ describe("room HTTP API", () => {
     const hostView = await view(created.playerToken);
     const guestView = await view(guest.playerToken);
     const outsiderView = await view(outsider.playerToken);
-    expect(hostView.room.gameState.privateData).toMatchObject({ role: "insider" });
-    expect(guestView.room.gameState.privateData).toMatchObject({ role: "insider" });
-    expect(outsiderView.room.gameState.privateData).toEqual({ role: "outsider" });
-    expect(JSON.stringify(outsiderView)).not.toContain("Damascus");
+    const views = [hostView, guestView, outsiderView];
+    const projectedOutsiders = views.filter((entry) => entry.room.gameState.privateData.role === "outsider");
+    const projectedInsiders = views.filter((entry) => entry.room.gameState.privateData.role === "insider");
+    expect(projectedOutsiders).toHaveLength(1);
+    expect(projectedInsiders).toHaveLength(2);
+    const secretWord = projectedInsiders[0].room.gameState.privateData.word.en;
+    expect(JSON.stringify(projectedOutsiders[0])).not.toContain(secretWord);
     expect(JSON.stringify(hostView.room.gameState.publicData)).not.toContain("outsider");
     expect(JSON.stringify([hostView, guestView, outsiderView])).not.toContain(created.hostToken);
   });

@@ -1,6 +1,6 @@
 import {
   randomBytes,
-  randomInt,
+  randomInt as cryptoRandomInt,
   randomUUID,
   timingSafeEqual,
 } from "node:crypto";
@@ -27,6 +27,7 @@ export type RoomErrorCode =
   | "ROOM_NOT_FOUND"
   | "ROOM_EXPIRED"
   | "ROOM_FULL"
+  | "ROOM_IN_PROGRESS"
   | "INVALID_NAME"
   | "INVALID_PAYLOAD"
   | "INVALID_TOKEN"
@@ -56,6 +57,7 @@ export type RoomRepositoryOptions = Readonly<{
   maxPlayers?: number;
   maxRooms?: number;
   storage?: RoomStorage;
+  randomInt?: (maxExclusive: number) => number;
 }>;
 
 export interface RoomStorage {
@@ -102,7 +104,7 @@ export type JoinRoomResult = Readonly<{
 function defaultCodeFactory(): string {
   let code = "";
   for (let index = 0; index < 6; index += 1) {
-    code += CODE_ALPHABET[randomInt(CODE_ALPHABET.length)];
+    code += CODE_ALPHABET[cryptoRandomInt(CODE_ALPHABET.length)];
   }
   return code;
 }
@@ -225,6 +227,7 @@ export class RoomRepository {
   private readonly inactivityMs: number;
   private readonly maxPlayers: number;
   private readonly maxRooms: number;
+  private readonly randomInt: (maxExclusive: number) => number;
 
   constructor(options: RoomRepositoryOptions = {}) {
     this.clock = options.clock ?? Date.now;
@@ -235,6 +238,7 @@ export class RoomRepository {
     this.maxPlayers = options.maxPlayers ?? DEFAULT_MAX_PLAYERS;
     this.maxRooms = options.maxRooms ?? 10_000;
     this.storage = options.storage ?? new MemoryRoomStorage();
+    this.randomInt = options.randomInt ?? ((maxExclusive) => cryptoRandomInt(maxExclusive));
     if (this.inactivityMs <= 0 || this.maxPlayers < 1 || this.maxRooms < 1) {
       throw new RangeError("Room limits must be positive.");
     }
@@ -319,6 +323,9 @@ export class RoomRepository {
         room: updated,
       };
     }
+    if (room.status !== "lobby") {
+      throw new RoomError("ROOM_IN_PROGRESS", "New players cannot join after the game starts.");
+    }
     if (room.players.length >= this.maxPlayers) {
       throw new RoomError("ROOM_FULL", "This room has reached its player limit.");
     }
@@ -366,7 +373,7 @@ export class RoomRepository {
       this.storage.delete(normalized);
       return undefined;
     }
-    return room;
+    return this.finalizeTimedRound(room);
   }
 
   applyAction(code: string, actorToken: string, action: RoomAction): Room {
@@ -374,8 +381,8 @@ export class RoomRepository {
   }
 
   private applyActionInternal(code: string, actorToken: string, action: RoomAction): Room {
-    const room = this.requireActive(code);
     this.validateAction(action);
+    const room = this.requireActive(code, action.type !== "timed/expire");
     const actor = room.players.find((player) =>
       constantTimeTokenEqual(player.playerToken, actorToken),
     );
@@ -403,7 +410,7 @@ export class RoomRepository {
         }
         return this.update(room, {
           status: "playing",
-          gameState: initializeGame(room, now),
+          gameState: initializeGame(room, now, 1, undefined, this.randomInt),
           events: [
             ...room.events,
             { type: "room/status-changed", status: "playing", at: now },
@@ -435,7 +442,7 @@ export class RoomRepository {
       }
       case "game/next-round":
         return this.update(room, {
-          gameState: nextGameRound(room, now),
+          gameState: nextGameRound(room, now, this.randomInt),
         });
       case "game/return-lobby":
         if (room.status !== "playing") return this.invalidAction("Room is already in the lobby.");
@@ -452,6 +459,7 @@ export class RoomRepository {
             isHost,
             action,
             now,
+            this.randomInt,
           ),
           events: [...room.events, {
             type: "game/action-applied",
@@ -517,13 +525,30 @@ export class RoomRepository {
     return updated;
   }
 
-  private requireActive(code: string): Room {
+  private requireActive(code: string, finalizeTimed = true): Room {
     const normalized = code.toUpperCase();
     const room = this.storage.get(normalized);
     if (!room) throw new RoomError("ROOM_NOT_FOUND", "Room does not exist.");
     if (room.expiresAt <= this.clock()) {
       this.storage.delete(normalized);
       throw new RoomError("ROOM_EXPIRED", "Room has expired.");
+    }
+    return finalizeTimed ? this.finalizeTimedRound(room) : room;
+  }
+
+  private finalizeTimedRound(room: Room): Room {
+    const state = room.gameState?.publicData as Record<string, unknown> | null | undefined;
+    const now = this.clock();
+    if (
+      room.status === "playing" &&
+      ["charades", "forbidden-word", "rapid-fire"].includes(room.selectedGame ?? "") &&
+      state?.phase === "play" &&
+      typeof state.timerEndsAt === "number" &&
+      now >= state.timerEndsAt
+    ) {
+      return this.update(room, {
+        gameState: reduceGame(room, room.hostPlayerId, true, { type: "timed/expire" }, now, this.randomInt),
+      });
     }
     return room;
   }

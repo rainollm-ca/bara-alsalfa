@@ -205,6 +205,24 @@ describe("RoomRepository", () => {
     expect(reconnected.room.players[1]?.name).toBe("Guest");
   });
 
+  it("rejects new players after start while allowing existing-token reconnects", () => {
+    const { repository } = harness();
+    const created = repository.create({ hostName: "Host" });
+    const guest = repository.join(created.code, { name: "Guest" });
+    repository.applyAction(created.code, created.hostToken, {
+      type: "lobby/select-game", gameId: "category-challenge",
+    });
+    repository.applyAction(created.code, created.hostToken, { type: "lobby/start" });
+
+    expect(() => repository.join(created.code, { name: "Late" })).toThrowError(
+      expect.objectContaining({ code: "ROOM_IN_PROGRESS" }),
+    );
+    expect(repository.join(created.code, {
+      name: "Guest renamed", playerToken: guest.playerToken,
+    })).toMatchObject({ reconnected: true, playerId: guest.playerId });
+    expect(repository.get(created.code)?.players).toHaveLength(2);
+  });
+
   it("projects only the requesting player's private data and leaks no tokens", () => {
     const { repository } = harness();
     const created = repository.create({

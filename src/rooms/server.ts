@@ -130,6 +130,7 @@ const roomStatuses: Record<string, number> = {
   ROOM_NOT_FOUND: 404,
   ROOM_EXPIRED: 410,
   ROOM_FULL: 409,
+  ROOM_IN_PROGRESS: 409,
   INVALID_NAME: 422,
   INVALID_PAYLOAD: 422,
   INVALID_TOKEN: 401,

@@ -73,4 +73,39 @@ describe("SQLite room persistence", () => {
     expect(rooms.create({ hostName: "After expiry" }).code).toBe("100002");
     storage.close();
   });
+
+  it("finalizes a timed round once across repository instances during authenticated polling", () => {
+    let now = 5_000;
+    const previousDuration = process.env.ROOM_ROUND_DURATION_MS;
+    process.env.ROOM_ROUND_DURATION_MS = "100";
+    const path = tempDb();
+    const storageA = new SQLiteRoomStorage(path);
+    const storageB = new SQLiteRoomStorage(path);
+    const options = { clock: () => now, randomInt: () => 0 };
+    const a = new RoomRepository({ ...options, storage: storageA, codeFactory: () => "TIME12" });
+    const b = new RoomRepository({ ...options, storage: storageB });
+    try {
+      const created = a.create({ hostName: "Host" });
+      const guests = ["One", "Two", "Three"].map((name) => a.join(created.code, { name }));
+      a.applyAction(created.code, created.hostToken, { type: "lobby/select-game", gameId: "charades" });
+      a.applyAction(created.code, created.hostToken, { type: "lobby/start" });
+      now += 100;
+      const finalized = b.touch(created.code, guests[0]!.playerToken);
+      expect((finalized.gameState!.publicData as any).phase).toBe("result");
+      const revision = finalized.gameState!.revision;
+      expect((a.get(created.code)!.gameState!.publicData as any).phase).toBe("result");
+      expect(a.get(created.code)!.gameState!.revision).toBe(revision);
+      expect(() => a.applyAction(created.code, created.hostToken, {
+        type: "charades/mark", outcome: "correct",
+      })).toThrowError(expect.objectContaining({ code: "INVALID_ACTION" }));
+      expect(() => b.applyAction(created.code, created.hostToken, {
+        type: "timed/expire",
+      })).toThrowError(expect.objectContaining({ code: "INVALID_ACTION" }));
+    } finally {
+      storageA.close();
+      storageB.close();
+      if (previousDuration === undefined) delete process.env.ROOM_ROUND_DURATION_MS;
+      else process.env.ROOM_ROUND_DURATION_MS = previousDuration;
+    }
+  });
 });

@@ -8,7 +8,7 @@ import { toPlayerView } from "../src/rooms/playerView";
 
 function started(gameId: GameId, players = ["Host", "Guest", "Third", "Fourth"]) {
   let now = 10_000;
-  const rooms = new RoomRepository({ codeFactory: () => "PLAY12", clock: () => now });
+  const rooms = new RoomRepository({ codeFactory: () => "PLAY12", clock: () => now, randomInt: () => 0 });
   const created = rooms.create({ hostName: players[0]! });
   const joined = players.slice(1).map((name) => rooms.join(created.code, { name }));
   rooms.applyAction(created.code, created.hostToken, { type: "lobby/select-game", gameId });
@@ -17,6 +17,30 @@ function started(gameId: GameId, players = ["Host", "Guest", "Third", "Fourth"])
 }
 
 describe("authoritative room game reducers", () => {
+  it("uses the injected random source and avoids previously selected prompts", () => {
+    const calls: number[] = [];
+    const rooms = new RoomRepository({
+      codeFactory: () => "RAND12",
+      randomInt: (maxExclusive) => {
+        calls.push(maxExclusive);
+        return Math.min(1, maxExclusive - 1);
+      },
+    });
+    const created = rooms.create({ hostName: "Host" });
+    rooms.join(created.code, { name: "Guest" });
+    rooms.applyAction(created.code, created.hostToken, {
+      type: "lobby/select-game", gameId: "category-challenge",
+    });
+    const first = rooms.applyAction(created.code, created.hostToken, { type: "lobby/start" });
+    const firstIndex = (first.gameState!.publicData as any).promptIndex;
+    rooms.applyAction(created.code, created.hostToken, {
+      type: "category/score", correctPlayerId: null,
+    });
+    const second = rooms.applyAction(created.code, created.hostToken, { type: "game/next-round" });
+    expect((second.gameState!.publicData as any).promptIndex).not.toBe(firstIndex);
+    expect(calls.some((max) => max > 2)).toBe(true);
+  });
+
   it.each(GAME_CATALOG.map((game) => game.id))("initializes %s with bounded authoritative state", (gameId) => {
     const { room } = started(gameId);
     expect(room.gameState?.publicData).toMatchObject({ gameId, round: 1 });
@@ -50,7 +74,9 @@ describe("authoritative room game reducers", () => {
 
   it.each(["out-of-loop", "most-likely-to"] as const)("accepts one private vote per player and reveals after all vote in %s", (gameId) => {
     const { rooms, created, joined, room, advance } = started(gameId);
-    const targetId = gameId === "out-of-loop" ? room.players.at(-1)!.id : room.players[0]!.id;
+    const targetId = gameId === "out-of-loop"
+      ? (room.gameState!.privateByPlayerId!.__server as any).outsider
+      : room.players[0]!.id;
     const tokens = [created.playerToken, ...joined.map((entry) => entry.playerToken)];
     if (gameId === "out-of-loop") {
       rooms.applyAction(created.code, created.hostToken, { type: "out-of-loop/open-vote" });
@@ -67,7 +93,8 @@ describe("authoritative room game reducers", () => {
     if (gameId === "out-of-loop") {
       const outsiderId = state.outsiderPlayerId as string;
       const outsider = room.players.find((candidate) => candidate.id === outsiderId)!;
-      rooms.applyAction(created.code, outsider.playerToken, { type: "out-of-loop/guess", word: "Damascus" });
+      const word = (room.gameState!.privateByPlayerId!.__server as any).word.en;
+      rooms.applyAction(created.code, outsider.playerToken, { type: "out-of-loop/guess", word });
       expect((rooms.get(created.code)!.gameState!.publicData as { phase: string }).phase).toBe("result");
     }
   });
@@ -94,11 +121,13 @@ describe("authoritative room game reducers", () => {
         rooms.applyAction(created.code, token, { type: "most-likely/vote", playerId: room.players[0]!.id });
       }
     } else if (gameId === "out-of-loop") {
+      const server = room.gameState!.privateByPlayerId!.__server as any;
+      const outsider = room.players.find((player) => player.id === server.outsider)!;
       rooms.applyAction(created.code, host, { type: "out-of-loop/open-vote" });
       for (const token of [created.playerToken, ...joined.map((item) => item.playerToken)]) {
-        rooms.applyAction(created.code, token, { type: "out-of-loop/vote", playerId: room.players.at(-1)!.id });
+        rooms.applyAction(created.code, token, { type: "out-of-loop/vote", playerId: outsider.id });
       }
-      rooms.applyAction(created.code, room.players.at(-1)!.playerToken, { type: "out-of-loop/guess", word: "wrong" });
+      rooms.applyAction(created.code, outsider.playerToken, { type: "out-of-loop/guess", word: "wrong" });
     } else {
       rooms.applyAction(created.code, created.playerToken, { type: "two-truths/submit", statements: ["A", "B", "C"], lieIndex: 1 });
       for (const item of joined) rooms.applyAction(created.code, item.playerToken, { type: "two-truths/vote", index: 1 });
@@ -140,7 +169,9 @@ describe("authoritative room game reducers", () => {
       .toThrowError(expect.objectContaining({ code: "INVALID_ACTION" }));
     advance(60_001);
     expect(() => mark("correct")).toThrowError(expect.objectContaining({ code: "INVALID_ACTION" }));
-    const result = rooms.applyAction(created.code, created.hostToken, { type: "timed/expire" });
+    const result = rooms.get(created.code)!;
+    expect(() => rooms.applyAction(created.code, created.hostToken, { type: "timed/expire" }))
+      .toThrowError(expect.objectContaining({ code: "INVALID_ACTION" }));
     expect((result.gameState!.publicData as Record<string, any>).phase).toBe("result");
     const next = rooms.applyAction(created.code, created.hostToken, { type: "game/next-round" });
     const nextState = next.gameState!.publicData as Record<string, any>;
@@ -192,14 +223,17 @@ describe("authoritative room game reducers", () => {
       rooms.applyAction(created.code, player.playerToken, { type: "two-truths/vote", index: 1 });
     }
     const result = rooms.get(created.code)!.gameState!.publicData as Record<string, unknown>;
-    expect(result).toMatchObject({ phase: "result", lieIndex: 1 });
+    expect(result).toMatchObject({
+      phase: "result",
+      lieIndex: (result.statements as string[]).indexOf("I fly"),
+    });
   });
 
   it("ends Out of Loop immediately with an outsider win when the vote misses", () => {
     const { rooms, created, joined, room } = started("out-of-loop");
     rooms.applyAction(created.code, created.hostToken, { type: "out-of-loop/open-vote" });
     for (const token of [created.playerToken, ...joined.map((item) => item.playerToken)]) {
-      rooms.applyAction(created.code, token, { type: "out-of-loop/vote", playerId: room.players[0]!.id });
+      rooms.applyAction(created.code, token, { type: "out-of-loop/vote", playerId: room.players[1]!.id });
     }
     const state = rooms.get(created.code)!.gameState!.publicData as Record<string, any>;
     expect(state).toMatchObject({ phase: "result", caught: false, outsiderCorrect: true });
