@@ -351,9 +351,14 @@ describe("room HTTP API", () => {
     const projectedInsiders = views.filter((entry) => entry.room.gameState.privateData.role === "insider");
     expect(projectedOutsiders).toHaveLength(1);
     expect(projectedInsiders).toHaveLength(2);
-    const secretWord = projectedInsiders[0].room.gameState.privateData.word.en;
-    expect(JSON.stringify(projectedOutsiders[0])).not.toContain(secretWord);
-    expect(JSON.stringify(hostView.room.gameState.publicData)).not.toContain("outsider");
-    expect(JSON.stringify([hostView, guestView, outsiderView])).not.toContain(created.hostToken);
+    expect(projectedOutsiders[0].room.gameState.privateData).toEqual({ role: "outsider" });
+    expect(hostView.room.gameState.publicData).not.toHaveProperty("outsider");
+    expect(hostView.room.gameState.publicData).not.toHaveProperty("word");
+    const containsExactValue = (value: unknown, needle: string): boolean =>
+      value === needle ||
+      (Array.isArray(value) && value.some((entry) => containsExactValue(entry, needle))) ||
+      (typeof value === "object" && value !== null &&
+        Object.values(value as Record<string, unknown>).some((entry) => containsExactValue(entry, needle)));
+    expect(containsExactValue([hostView, guestView, outsiderView], created.hostToken)).toBe(false);
   });
 });
