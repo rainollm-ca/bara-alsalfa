@@ -36,15 +36,21 @@ function timedPrompt(gameId: GameId, index: number) {
   return source[index % source.length]!;
 }
 
-function chooseUnused(length: number, history: readonly number[], randomInt: RandomInt) {
+export function selectRandomCycleIndex(length: number, history: readonly number[], randomInt: RandomInt) {
   const used = new Set(history);
-  const candidates = Array.from({ length }, (_, index) => index).filter((index) => !used.has(index));
-  const pool = candidates.length ? candidates : Array.from({ length }, (_, index) => index);
-  const selected = randomInt(pool.length);
-  if (!Number.isInteger(selected) || selected < 0 || selected >= pool.length) {
+  let candidates = Array.from({ length }, (_, index) => index).filter((index) => !used.has(index));
+  const beginsCycle = candidates.length === 0;
+  if (beginsCycle) {
+    const previous = history.at(-1);
+    candidates = Array.from({ length }, (_, index) => index)
+      .filter((index) => length === 1 || index !== previous);
+  }
+  const selected = randomInt(candidates.length);
+  if (!Number.isInteger(selected) || selected < 0 || selected >= candidates.length) {
     throw new RoomError("INVALID_ACTION", "Random source returned an invalid index.");
   }
-  return pool[selected]!;
+  const index = candidates[selected]!;
+  return { index, history: beginsCycle ? [index] : [...history, index] };
 }
 
 export function initializeGame(
@@ -67,19 +73,21 @@ export function initializeGame(
   const prior = previous?.publicData as State | undefined;
   const base: State = { gameId, round, phase: "play", scores: prior?.scores ?? scores(room) };
   const turnHistory = [...(prior?.turnHistory ?? [])];
-  const activePlayerIndex = chooseUnused(room.players.length, turnHistory, randomInt);
+  const activePlayerSelection = selectRandomCycleIndex(room.players.length, turnHistory, randomInt);
+  const activePlayerIndex = activePlayerSelection.index;
   const activePlayer = room.players[activePlayerIndex]!;
   const promptIndex = round - 1;
   base.activePlayerId = activePlayer.id;
-  base.turnHistory = [...turnHistory, activePlayerIndex];
+  base.turnHistory = activePlayerSelection.history;
   let privateByPlayerId: Record<string, JsonValue> | undefined;
   switch (gameId) {
     case "category-challenge": {
       const questions = CATEGORY_CHALLENGE_CATEGORIES.flatMap((category) => category.questions);
       const promptHistory = [...(prior?.promptHistory ?? [])];
-      const selectedIndex = chooseUnused(questions.length, promptHistory, randomInt);
+      const selection = selectRandomCycleIndex(questions.length, promptHistory, randomInt);
+      const selectedIndex = selection.index;
       const question = questions[selectedIndex]!;
-      Object.assign(base, { prompt: localized(question.question), promptIndex: selectedIndex, promptHistory: [...promptHistory, selectedIndex] });
+      Object.assign(base, { prompt: localized(question.question), promptIndex: selectedIndex, promptHistory: selection.history });
       privateByPlayerId = { __server: { answer: localized(question.answer) } };
       break;
     }
@@ -95,7 +103,8 @@ export function initializeGame(
       const publicHistory = [...(prior?.roundPromptHistory ?? [])];
       const sourceLength = gameId === "charades" ? CHARADES_PROMPTS.length :
         gameId === "forbidden-word" ? FORBIDDEN_WORD_PROMPTS.length : RAPID_FIRE_PROMPTS.length;
-      const currentPromptIndex = chooseUnused(sourceLength, history, randomInt);
+      const selection = selectRandomCycleIndex(sourceLength, history, randomInt);
+      const currentPromptIndex = selection.index;
       const selected = timedPrompt(gameId, currentPromptIndex);
       Object.assign(base, {
         teams,
@@ -116,22 +125,27 @@ export function initializeGame(
       privateByPlayerId = {
         [activeActorId]: secret,
         [room.hostPlayerId]: secret,
-        __server: { selectedPromptIndex: currentPromptIndex, promptHistoryIndices: history },
+        __server: { selectedPromptIndex: currentPromptIndex, promptHistoryIndices: selection.history.slice(0, -1) },
       };
       break;
     }
     case "out-of-loop": {
       const priorServer = previous?.privateByPlayerId?.__server as Record<string, any> | undefined;
       const categoryHistory = [...(prior?.categoryHistory ?? [])];
-      const categoryIndex = chooseUnused(CATEGORIES.length, categoryHistory, randomInt);
+      const categorySelection = selectRandomCycleIndex(CATEGORIES.length, categoryHistory, randomInt);
+      const categoryIndex = categorySelection.index;
       const category = CATEGORIES[categoryIndex]!;
-      const wordHistory = [...(priorServer?.wordHistory ?? [])];
-      const wordIndex = chooseUnused(category.words.length, wordHistory, randomInt);
+      const wordHistories = { ...(priorServer?.wordHistories ?? {}) } as Record<string, number[]>;
+      const wordHistory = [...(wordHistories[String(categoryIndex)] ?? [])];
+      const wordSelection = selectRandomCycleIndex(category.words.length, wordHistory, randomInt);
+      const wordIndex = wordSelection.index;
+      wordHistories[String(categoryIndex)] = wordSelection.history;
       const chosenWord = category.words[wordIndex]!;
       const outsiderHistory = [...(priorServer?.outsiderHistory ?? [])];
-      const outsiderIndex = chooseUnused(room.players.length, outsiderHistory, randomInt);
+      const outsiderSelection = selectRandomCycleIndex(room.players.length, outsiderHistory, randomInt);
+      const outsiderIndex = outsiderSelection.index;
       const outsider = room.players[outsiderIndex]!.id;
-      Object.assign(base, { phase: "discussion", category: localized(category.title), promptIndex: categoryIndex, categoryHistory: [...categoryHistory, categoryIndex], voteCount: 0 });
+      Object.assign(base, { phase: "discussion", category: localized(category.title), promptIndex: categoryIndex, categoryHistory: categorySelection.history, voteCount: 0 });
       privateByPlayerId = Object.fromEntries(room.players.map((player) => [
         player.id,
         player.id === outsider
@@ -142,19 +156,19 @@ export function initializeGame(
         outsider,
         word: localized(chosenWord),
         votes: {},
-        wordHistory: [...wordHistory, wordIndex],
-        outsiderHistory: [...outsiderHistory, outsiderIndex],
+        wordHistories,
+        outsiderHistory: outsiderSelection.history,
       };
       break;
     }
     case "who-am-i": {
       const priorServer = previous?.privateByPlayerId?.__server as Record<string, any> | undefined;
       const identityHistory = [...(priorServer?.identityHistory ?? [])];
-      const available = [...identityHistory];
+      let available = [...identityHistory];
       const identityIndexes = room.players.map(() => {
-        const index = chooseUnused(WHO_AM_I_PROMPTS.length, available, randomInt);
-        available.push(index);
-        return index;
+        const selection = selectRandomCycleIndex(WHO_AM_I_PROMPTS.length, available, randomInt);
+        available = selection.history;
+        return selection.index;
       });
       const identities = Object.fromEntries(room.players.map((player, index) => [
         player.id, localized(WHO_AM_I_PROMPTS[identityIndexes[index]!]!.text),
@@ -170,8 +184,9 @@ export function initializeGame(
     case "most-likely-to":
       {
         const history = [...(prior?.promptHistory ?? [])];
-        const selectedIndex = chooseUnused(MOST_LIKELY_TO_PROMPTS.length, history, randomInt);
-        Object.assign(base, { phase: "vote", prompt: localized(MOST_LIKELY_TO_PROMPTS[selectedIndex]!.text), promptIndex: selectedIndex, promptHistory: [...history, selectedIndex], voteCount: 0 });
+        const selection = selectRandomCycleIndex(MOST_LIKELY_TO_PROMPTS.length, history, randomInt);
+        const selectedIndex = selection.index;
+        Object.assign(base, { phase: "vote", prompt: localized(MOST_LIKELY_TO_PROMPTS[selectedIndex]!.text), promptIndex: selectedIndex, promptHistory: selection.history, voteCount: 0 });
       }
       privateByPlayerId = { __server: { votes: {} } };
       break;
@@ -274,11 +289,13 @@ export function reduceGame(
       const sourceLength = room.selectedGame === "charades" ? CHARADES_PROMPTS.length :
         room.selectedGame === "forbidden-word" ? FORBIDDEN_WORD_PROMPTS.length : RAPID_FIRE_PROMPTS.length;
       state.promptIndex += 1;
-      privateState.__server.selectedPromptIndex = chooseUnused(
+      const selection = selectRandomCycleIndex(
         sourceLength,
         privateState.__server.promptHistoryIndices,
         randomInt,
       );
+      privateState.__server.selectedPromptIndex = selection.index;
+      privateState.__server.promptHistoryIndices = selection.history.slice(0, -1);
       const selected = timedPrompt(room.selectedGame, privateState.__server.selectedPromptIndex);
       const secret: Record<string, JsonValue> = { prompt: localized(selected.text) };
       if ("forbidden" in selected && Array.isArray(selected.forbidden)) {

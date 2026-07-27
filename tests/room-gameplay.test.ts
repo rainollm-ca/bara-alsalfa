@@ -5,6 +5,7 @@ import type { GameId } from "../src/games/types";
 import type { RoomAction } from "../src/rooms/contracts";
 import { RoomRepository } from "../src/rooms/repository";
 import { toPlayerView } from "../src/rooms/playerView";
+import { selectRandomCycleIndex } from "../src/rooms/gameplay";
 
 function started(gameId: GameId, players = ["Host", "Guest", "Third", "Fourth"]) {
   let now = 10_000;
@@ -17,6 +18,24 @@ function started(gameId: GameId, players = ["Host", "Guest", "Third", "Fourth"])
 }
 
 describe("authoritative room game reducers", () => {
+  it.each(["prompts", "players", "outsiders", "words", "identities"])(
+    "exhausts and resets randomized %s cycles without a boundary repeat",
+    () => {
+      let history: number[] = [];
+      const selected: number[] = [];
+      for (let index = 0; index < 8; index += 1) {
+        const result = selectRandomCycleIndex(3, history, () => 0);
+        selected.push(result.index);
+        history = JSON.parse(JSON.stringify(result.history));
+      }
+      expect(selected).toEqual([0, 1, 2, 0, 1, 2, 0, 1]);
+      expect(history).toEqual([0, 1]);
+      for (let index = 1; index < selected.length; index += 1) {
+        expect(selected[index]).not.toBe(selected[index - 1]);
+      }
+    },
+  );
+
   it("uses the injected random source and avoids previously selected prompts", () => {
     const calls: number[] = [];
     const rooms = new RoomRepository({

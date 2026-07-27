@@ -108,4 +108,48 @@ describe("SQLite room persistence", () => {
       else process.env.ROOM_ROUND_DURATION_MS = previousDuration;
     }
   });
+
+  it("persists randomized cycle state across restart and avoids an outsider boundary duplicate", () => {
+    const path = tempDb();
+    let storage = new SQLiteRoomStorage(path);
+    let rooms = new RoomRepository({
+      storage,
+      codeFactory: () => "CYCL12",
+      randomInt: () => 0,
+    });
+    const created = rooms.create({ hostName: "Host" });
+    const joined = ["One", "Two"].map((name) => rooms.join(created.code, { name }));
+    const tokens = [created.playerToken, ...joined.map((entry) => entry.playerToken)];
+    rooms.applyAction(created.code, created.hostToken, {
+      type: "lobby/select-game", gameId: "out-of-loop",
+    });
+    rooms.applyAction(created.code, created.hostToken, { type: "lobby/start" });
+    const selected: string[] = [];
+    for (let round = 0; round < 7; round += 1) {
+      const room = rooms.get(created.code)!;
+      const outsider = (room.gameState!.privateByPlayerId!.__server as any).outsider as string;
+      selected.push(outsider);
+      const target = room.players.find((player) => player.id !== outsider)!.id;
+      rooms.applyAction(created.code, created.hostToken, { type: "out-of-loop/open-vote" });
+      for (const token of tokens) {
+        rooms.applyAction(created.code, token, { type: "out-of-loop/vote", playerId: target });
+      }
+      if (round === 2) {
+        storage.close();
+        storage = new SQLiteRoomStorage(path);
+        rooms = new RoomRepository({ storage, randomInt: () => 0 });
+      }
+      if (round < 6) {
+        rooms.applyAction(created.code, created.hostToken, { type: "game/next-round" });
+      }
+    }
+    expect(selected).toEqual([
+      created.playerId, joined[0]!.playerId, joined[1]!.playerId,
+      created.playerId, joined[0]!.playerId, joined[1]!.playerId,
+      created.playerId,
+    ]);
+    expect((rooms.get(created.code)!.gameState!.privateByPlayerId!.__server as any).outsiderHistory)
+      .toEqual([0]);
+    storage.close();
+  });
 });
