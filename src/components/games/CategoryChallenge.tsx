@@ -384,6 +384,7 @@ export function CategoryChallenge({ locale, onExit, initialSession }: Props) {
     if (event.shiftKey && (
       document.activeElement === first
       || document.activeElement === dialogTitleRef.current
+      || document.activeElement === answerHeadingRef.current
     )) {
       event.preventDefault();
       last.focus();

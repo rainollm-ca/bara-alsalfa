@@ -79,6 +79,9 @@ describe("Category Challenge component", () => {
     const dialog = screen.getByRole("dialog");
     expect(dialog.contains(document.activeElement)).toBe(true);
     expect(document.activeElement).toBe(within(dialog).getByRole("heading", { name: "Answer" }));
+    fireEvent.keyDown(dialog, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(within(dialog).getByRole("button", { name: "Close question" }));
+    expect(dialog.contains(document.activeElement)).toBe(true);
 
     await user.click(within(dialog).getAllByRole("button", { name: /\+ Correct answer/ })[0]);
     expect(screen.queryByRole("dialog")).toBeNull();
