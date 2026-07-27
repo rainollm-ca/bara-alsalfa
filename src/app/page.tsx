@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { GameLibrary, readStoredLocale, syncDocumentLocale, writeStoredLocale } from "../components/GameLibrary";
 import { TopBar } from "../components/TopBar";
 import { OutOfLoop } from "../components/games/OutOfLoop";
+import { CategoryChallenge } from "../components/games/CategoryChallenge";
 import type { GameId, PlayMode } from "../games/types";
 import type { Locale } from "../lib/game";
 import { resolveGameView } from "../lib/ui-state";
@@ -32,7 +33,7 @@ export default function Home() {
     <main className="shell" dir={locale === "ar" ? "rtl" : "ltr"}>
       <div className="ambient ambientOne" />
       <div className="ambient ambientTwo" />
-      <section className={activeGame ? "appCard" : "appCard libraryCard"}>
+      <section className={activeGame === "category-challenge" ? "appCard challengeCard" : activeGame ? "appCard" : "appCard libraryCard"}>
         <TopBar
           locale={locale}
           onLocaleChange={changeLocale}
@@ -48,6 +49,8 @@ export default function Home() {
           />
         ) : view === "out-of-loop" ? (
           <OutOfLoop locale={locale} />
+        ) : view === "category-challenge" ? (
+          <CategoryChallenge locale={locale} onExit={() => setActiveGame(null)} />
         ) : view === "room-unavailable" ? (
           <section className="comingSoon roomUnavailable">
             <span aria-hidden="true">🔗</span>

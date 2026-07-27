@@ -142,6 +142,56 @@ footer { color:#8c918d; font-size:12px; padding:16px; z-index:1; }
 .comingSoon>span { font-size:64px; }
 .comingSoon h1 { max-width:480px; margin:18px 0 8px; font-size:clamp(35px,8vw,58px); }
 .comingSoon p { max-width:430px; margin:0; color:var(--muted); font-size:17px; }
+.challengeCard { width:min(100%,1080px); }
+.challengeSetup { display:grid; }
+.challengeCategories { grid-template-columns:repeat(2,minmax(0,1fr)); margin:14px 0 0; }
+.challengeCategories .category { justify-content:space-between; min-height:54px; text-align:start; }
+.challengeCategories .category b { color:var(--green); font-size:19px; }
+.teamNameGrid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+.teamNameField { display:grid; gap:7px; margin-bottom:22px; }
+.teamNameField span { font-weight:900; }
+.teamNameField input { width:100%; min-height:50px; border:1px solid var(--line); border-radius:14px; padding:10px 13px; background:white; color:var(--ink); outline:none; }
+.teamNameField input:focus { border-color:var(--green); box-shadow:0 0 0 3px rgba(25,107,80,.12); }
+.challengeActions { display:flex; gap:10px; justify-content:flex-end; }
+.primaryButton,.ghostButton { min-height:50px; display:inline-flex; align-items:center; justify-content:center; gap:8px; border-radius:14px; padding:11px 18px; font-weight:900; }
+.primaryButton { border:0; background:var(--green); color:white; }
+.primaryButton:disabled { opacity:.42; cursor:not-allowed; }
+.ghostButton { border:1px solid var(--line); background:white; color:var(--ink); }
+.challengeGame { padding:22px; }
+.scoreStrip { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:18px; }
+.scoreStrip>div { min-width:0; display:flex; align-items:center; justify-content:space-between; gap:10px; border-radius:16px; padding:12px 16px; background:var(--ink); color:white; }
+.scoreStrip span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:800; }
+.scoreStrip b { color:var(--lime); font-size:25px; }
+.challengeBoard { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:8px; overflow-x:auto; padding-bottom:4px; }
+.boardColumn { min-width:0; display:grid; grid-template-rows:minmax(68px,auto) repeat(5,62px); gap:8px; }
+.boardColumn h2 { display:grid; place-items:center; margin:0; border-radius:14px; padding:8px 5px; background:var(--terracotta); color:white; text-align:center; font-size:clamp(12px,1.5vw,17px); line-height:1.25; }
+.boardColumn button { border:1px solid #d4c7b4; border-radius:13px; background:#fff7e8; color:var(--green); font-size:clamp(17px,2.3vw,25px); font-weight:900; box-shadow:0 3px 0 #dfd2c0; }
+.boardColumn button:active:not(:disabled) { transform:translateY(2px); box-shadow:0 1px 0 #dfd2c0; }
+.boardColumn button:disabled { background:#e8e1d6; color:#a39a8d; box-shadow:none; cursor:not-allowed; }
+.boardBack { margin-top:18px; }
+.questionBackdrop { position:fixed; inset:0; z-index:20; display:grid; place-items:center; padding:18px; background:rgba(27,23,19,.66); backdrop-filter:blur(5px); }
+.questionModal { position:relative; width:min(100%,680px); max-height:calc(100vh - 36px); overflow:auto; border-radius:26px; padding:30px; background:var(--paper); box-shadow:0 30px 90px rgba(0,0,0,.28); text-align:center; }
+.questionMeta { display:flex; align-items:center; justify-content:center; gap:12px; }
+.questionMeta>b,.timer { min-width:62px; border-radius:100px; padding:7px 12px; background:#eaf2e8; color:var(--green); font-weight:900; }
+.timer.expired { background:#f2dcd2; color:#9c432e; }
+.questionModal h2 { margin:26px auto; max-width:570px; font-size:clamp(25px,5vw,39px); line-height:1.35; }
+.revealButton { width:100%; }
+.answerLabel { margin:4px 0; color:var(--muted); font-size:13px; font-weight:800; }
+.answerText { margin:0 0 24px; color:var(--green); font-size:clamp(28px,6vw,42px); font-weight:900; }
+.scoreButtons { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.scoreButtons>div { display:grid; gap:8px; border:1px solid var(--line); border-radius:16px; padding:12px; }
+.scoreButtons b { overflow:hidden; text-overflow:ellipsis; }
+.scoreButtons button { min-height:46px; border:0; border-radius:12px; color:white; font-weight:800; }
+.correctButton { background:var(--green); }
+.wrongButton { background:var(--terracotta); }
+.modalClose { position:absolute; inset-block-start:14px; inset-inline-end:14px; width:42px; height:42px; display:grid; place-items:center; border:0; border-radius:50%; background:#eee7dc; color:var(--ink); }
+.challengeResult { min-height:560px; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; }
+.challengeResult>svg { color:var(--gold); }
+.challengeResult h1 { margin:16px 0 5px; font-size:clamp(38px,7vw,62px); }
+.challengeResult>p { margin:0 0 24px; color:var(--green); font-size:25px; font-weight:900; }
+.resultScores { width:min(100%,420px); display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:26px; }
+.resultScores b { display:grid; gap:4px; border:1px solid var(--line); border-radius:16px; padding:15px; background:white; }
+.resultScores span { color:var(--green); font-size:30px; }
 @media(max-width:560px) {
   .shell { padding:0; }
   .appCard { min-height:100vh; border:0; border-radius:0; box-shadow:none; }
@@ -163,6 +213,20 @@ footer { color:#8c918d; font-size:12px; padding:16px; z-index:1; }
   .gameTileBody h2 { font-size:19px; }
   .gameTileBody p { min-height:0; }
   .gameAction { min-height:50px; }
+  .challengeCard .topBar { position:sticky; top:0; }
+  .challengeSetup .challengeCategories { grid-template-columns:1fr 1fr; gap:7px; }
+  .challengeCategories .category { padding:8px 10px; font-size:13px; }
+  .teamNameGrid { grid-template-columns:1fr; gap:0; }
+  .challengeActions>* { flex:1; }
+  .challengeGame { padding:12px 8px 22px; }
+  .challengeBoard { gap:4px; }
+  .boardColumn { min-width:50px; grid-template-rows:minmax(76px,auto) repeat(5,55px); gap:5px; }
+  .boardColumn h2 { border-radius:9px; padding:5px 2px; font-size:10px; overflow-wrap:anywhere; }
+  .boardColumn button { min-width:0; border-radius:9px; padding:0; font-size:15px; }
+  .questionModal { padding:60px 17px 20px; border-radius:22px; }
+  .scoreButtons { grid-template-columns:1fr; }
+  .scoreButtons>div { grid-template-columns:1fr 1fr; }
+  .scoreButtons b { grid-column:1/-1; }
   .players,.suspects { grid-template-columns:repeat(3,1fr); }
   .playerChip { padding:7px 6px; gap:5px; }
   .avatar { width:25px; height:25px; }
