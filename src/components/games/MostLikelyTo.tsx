@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { MOST_LIKELY_TO_PROMPTS } from "../../games/content/socialGames";
 import { tallyVotes } from "../../games/engines/socialGames";
 import type { Locale } from "../../games/types";
@@ -21,6 +21,12 @@ export function MostLikelyTo({ locale }: { locale: Locale }) {
   const [choice, setChoice] = useState("");
   const [votes, setVotes] = useState<string[]>([]);
   const [promptIndex, setPromptIndex] = useState(0);
+  const voteHeadingRef = useRef<HTMLParagraphElement>(null);
+  const resultHeadingRef = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    if (phase === "vote") voteHeadingRef.current?.focus();
+    if (phase === "result") resultHeadingRef.current?.focus();
+  }, [phase]);
   const valid = validateSetup(players.length, { min: 3, max: 16 }, locale);
   function add() {
     const clean = name.trim();
@@ -42,7 +48,7 @@ export function MostLikelyTo({ locale }: { locale: Locale }) {
       <button className="primary" disabled={!valid.valid} onClick={() => setPhase("pass")}>{t.start}</button>
     </SetupShell>}
     {phase === "pass" && <div className="reveal"><h2>{t.pass}</h2><div className="bigName">{players[voter]}</div><p>{t.private}</p><button autoFocus className="primary" onClick={() => setPhase("vote")}>{t.ready}</button></div>}
-    {phase === "vote" && <div><p className="eyebrow">{MOST_LIKELY_TO_PROMPTS[promptIndex].text[locale]}</p><div className="suspects">{players.map((player) => <button key={player} className={choice === player ? "selected" : ""} onClick={() => setChoice(player)}>{player}</button>)}</div><button className="primary" disabled={!choice} onClick={lock}>{t.lock}</button></div>}
-    {phase === "result" && <div className="result" aria-live="polite"><h2>{result.isTie ? (result.winners.length === 3 ? t.three : t.tie) : t.winner}</h2><div className="bigName">{result.winners.join(" · ")}</div><button className="primary" onClick={() => { setVotes([]); setVoter(0); setPromptIndex((promptIndex + 1) % MOST_LIKELY_TO_PROMPTS.length); setPhase("pass"); }}>{t.again}</button></div>}
+    {phase === "vote" && <div><p ref={voteHeadingRef} tabIndex={-1} className="eyebrow">{MOST_LIKELY_TO_PROMPTS[promptIndex].text[locale]}</p><div className="suspects">{players.map((player) => <button key={player} className={choice === player ? "selected" : ""} onClick={() => setChoice(player)}>{player}</button>)}</div><button className="primary" disabled={!choice} onClick={lock}>{t.lock}</button></div>}
+    {phase === "result" && <div className="result" aria-live="polite"><h2 ref={resultHeadingRef} tabIndex={-1}>{result.isTie ? (result.winners.length === 3 ? t.three : t.tie) : t.winner}</h2><div className="bigName">{result.winners.join(" · ")}</div><button className="primary" onClick={() => { setVotes([]); setVoter(0); setPromptIndex((promptIndex + 1) % MOST_LIKELY_TO_PROMPTS.length); setPhase("pass"); }}>{t.again}</button></div>}
   </section>;
 }

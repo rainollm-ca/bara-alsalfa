@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createTwoTruthsRound, projectTwoTruthsRound, revealTwoTruthsLie, tallyVotes, type TwoTruthsSecretRound } from "../../games/engines/socialGames";
 import type { Locale } from "../../games/types";
 import { PlayerNamesField, SetupShell, validateSetup } from "../SetupShell";
@@ -24,6 +24,16 @@ export function TwoTruthsLie({ locale }: { locale: Locale }) {
   const [voter, setVoter] = useState(0);
   const [choice, setChoice] = useState<number | null>(null);
   const [votes, setVotes] = useState<number[]>([]);
+  const firstVoteRef = useRef<HTMLButtonElement>(null);
+  const revealButtonRef = useRef<HTMLButtonElement>(null);
+  const revealHeadingRef = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    if (phase === "vote") firstVoteRef.current?.focus();
+    if (phase === "reveal") {
+      if (round?.revealed) revealHeadingRef.current?.focus();
+      else revealButtonRef.current?.focus();
+    }
+  }, [phase, round?.revealed]);
   const valid = validateSetup(players.length, { min: 3, max: 12 }, locale);
   const normalized = statements.map((value) => value.trim().toLocaleLowerCase());
   const statementsValid = normalized.every(Boolean) && new Set(normalized).size === 3;
@@ -45,7 +55,7 @@ export function TwoTruthsLie({ locale }: { locale: Locale }) {
     {phase === "entry-pass" && <div className="reveal"><h2>{t.pass}</h2><div className="bigName">{players[storyteller]}</div><button autoFocus className="primary" onClick={() => setPhase("entry")}>{t.entryReady}</button></div>}
     {phase === "entry" && <div><h2>{players[storyteller]}</h2>{statements.map((value, index) => <div key={index}><input aria-label={`${t.statement} ${index + 1}`} placeholder={`${t.statement} ${index + 1}`} value={value} onChange={(event) => setStatements(statements.map((item, i) => i === index ? event.target.value : item))} /><label><input type="radio" name="lie" aria-label={`${t.statement} ${index + 1} ${t.lie}`} checked={lie === index} onChange={() => setLie(index as 0 | 1 | 2)} /> {t.lie}</label></div>)}<button className="primary" disabled={!statementsValid} onClick={saveRound}>{t.save}</button></div>}
     {phase === "round-pass" && <div className="reveal"><h2>{t.pass}</h2><div className="bigName">{voters[voter]}</div><button autoFocus className="primary" onClick={() => setPhase("vote")}>{t.readyVote}</button></div>}
-    {phase === "vote" && view && <div><div className="suspects">{view.statements.map((statement, index) => <button key={statement} className={choice === index ? "selected" : ""} onClick={() => setChoice(index)}>{statement}</button>)}</div><button className="primary" disabled={choice === null} onClick={lockVote}>{t.lock}</button></div>}
-    {phase === "reveal" && round && <div className="result"><button className="primary" onClick={() => setRound(revealTwoTruthsLie(round))}>{t.reveal}</button>{round.revealed && <><h2>{round.statements[round.lieIndex]}</h2><p>{t.correct}: {tallyVotes(votes.map(String)).counts[String(round.lieIndex)] ?? 0}</p><button onClick={() => { setStoryteller((storyteller + 1) % players.length); setStatements(["", "", ""]); setRound(null); setPhase("entry-pass"); }}>{t.next}</button></>}</div>}
+    {phase === "vote" && view && <div><div className="suspects">{view.statements.map((statement, index) => <button ref={index === 0 ? firstVoteRef : undefined} key={statement} className={choice === index ? "selected" : ""} onClick={() => setChoice(index)}>{statement}</button>)}</div><button className="primary" disabled={choice === null} onClick={lockVote}>{t.lock}</button></div>}
+    {phase === "reveal" && round && <div className="result" aria-live="polite">{!round.revealed ? <button ref={revealButtonRef} className="primary" onClick={() => setRound(revealTwoTruthsLie(round))}>{t.reveal}</button> : <><h2 ref={revealHeadingRef} tabIndex={-1}>{round.statements[round.lieIndex]}</h2><p>{t.correct}: {tallyVotes(votes.map(String)).counts[String(round.lieIndex)] ?? 0}</p><button onClick={() => { setStoryteller((storyteller + 1) % players.length); setStatements(["", "", ""]); setRound(null); setPhase("entry-pass"); }}>{t.next}</button></>}</div>}
   </section>;
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Check, Eye, EyeOff, RotateCcw, Shuffle, Sparkles, Users } from "lucide-react";
 import { CategorySelector, PlayerNamesField, SetupShell, validateSetup } from "../SetupShell";
 import { buildRound, calculateVote, CATEGORIES, DEFAULT_PLAYERS, normalizePlayers, type GameRound, type Locale } from "../../lib/game";
@@ -61,6 +61,12 @@ export function OutOfLoop({ locale }: OutOfLoopProps) {
   const [suspect, setSuspect] = useState("");
   const [voteIndex, setVoteIndex] = useState(0);
   const [votes, setVotes] = useState<Record<string, string>>({});
+  const voteHeadingRef = useRef<HTMLHeadingElement>(null);
+  const resultAnnouncementRef = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (screen === "vote") voteHeadingRef.current?.focus();
+    if (screen === "result") resultAnnouncementRef.current?.focus();
+  }, [screen]);
   const t = copy[locale];
 
   const category = useMemo(() => CATEGORIES.find((item) => item.id === categoryId)!, [categoryId]);
@@ -94,6 +100,8 @@ export function OutOfLoop({ locale }: OutOfLoopProps) {
   }
 
   const role = round?.roles[revealIndex];
+  const voteResult = calculateVote(votes);
+  const outsiderSoleWinner = voteResult.leaders.length === 1 && voteResult.leaders[0] === round?.outsider;
 
   return (
     <>
@@ -182,7 +190,7 @@ export function OutOfLoop({ locale }: OutOfLoopProps) {
         </div>}
 
         {screen === "vote" && round && <div className="panel play">
-          <h2>{t.whoOut}</h2>
+          <h2 ref={voteHeadingRef} tabIndex={-1}>{t.whoOut}</h2>
           <div className="suspects">{round.roles.filter((_, index) => index !== voteIndex).map(({ player }) => <button key={player} onClick={() => setSuspect(player)} className={suspect === player ? "selected" : ""}>{player}{suspect === player && <Check size={15} />}</button>)}</div>
           <button className="primary" disabled={!suspect} onClick={() => {
             const nextVotes = { ...votes, [round.roles[voteIndex].player]: suspect };
@@ -194,8 +202,8 @@ export function OutOfLoop({ locale }: OutOfLoopProps) {
 
         {screen === "result" && round && (
           <div className="result">
-            <div className={calculateVote(votes).leaders.includes(round.outsider) ? "resultIcon win" : "resultIcon lose"}>{calculateVote(votes).leaders.includes(round.outsider) ? "🎉" : "😏"}</div>
-            <p className="eyebrow">{calculateVote(votes).tied ? t.tiedVote : calculateVote(votes).leaders.includes(round.outsider) ? t.caught : t.fooled}</p>
+            <div className={voteResult.tied ? "resultIcon neutral" : outsiderSoleWinner ? "resultIcon win" : "resultIcon lose"}>{voteResult.tied ? "🤝" : outsiderSoleWinner ? "🎉" : "😏"}</div>
+            <p ref={resultAnnouncementRef} tabIndex={-1} aria-live="polite" className="eyebrow">{voteResult.tied ? t.tiedVote : outsiderSoleWinner ? t.caught : t.fooled}</p>
             <h2><em>{round.outsider}</em> {t.wasOut}</h2>
             <div className="answer"><span>{t.wordWas}</span><strong>{round.word}</strong><small>{round.category.emoji} {round.categoryTitle}</small></div>
             <button className="primary" onClick={startRound}><RotateCcw size={19} /> {t.again}</button>
