@@ -599,9 +599,10 @@ export class RoomRepository {
         }
         return;
       case "category/score":
-      case "charades/score":
-      case "forbidden-word/score":
-      case "rapid-fire/score":
+      case "charades/mark":
+      case "forbidden-word/mark":
+      case "rapid-fire/mark":
+      case "timed/expire":
       case "out-of-loop/vote":
       case "most-likely/vote":
       case "who-am-i/guess":

@@ -15,6 +15,25 @@ const scores = (room: Room) =>
 
 const localized = (value: { ar: string; en: string }) => ({ ar: value.ar, en: value.en });
 
+function timedDuration() {
+  const configured = Number(process.env.ROOM_TIMED_ROUND_MS ?? 60_000);
+  return Number.isInteger(configured) && configured >= 100 && configured <= 120_000
+    ? configured : 60_000;
+}
+
+function timedTeams(room: Room) {
+  return [
+    { id: "team-1", playerIds: room.players.filter((_, index) => index % 2 === 0).map((player) => player.id) },
+    { id: "team-2", playerIds: room.players.filter((_, index) => index % 2 === 1).map((player) => player.id) },
+  ];
+}
+
+function timedPrompt(gameId: GameId, index: number) {
+  const source = gameId === "charades" ? CHARADES_PROMPTS :
+    gameId === "forbidden-word" ? FORBIDDEN_WORD_PROMPTS : RAPID_FIRE_PROMPTS;
+  return source[index % source.length]!;
+}
+
 export function initializeGame(
   room: Room,
   now = room.updatedAt,
@@ -46,26 +65,34 @@ export function initializeGame(
       break;
     }
     case "charades":
-      Object.assign(base, { activePlayerId: activePlayer.id, timerEndsAt: now + 60_000, promptIndex, usedPromptIds: [...(prior?.usedPromptIds ?? []), promptIndex].slice(-50) });
-      privateByPlayerId = {
-        [activePlayer.id]: { prompt: localized(CHARADES_PROMPTS[promptIndex % CHARADES_PROMPTS.length]!.text) },
-        [room.hostPlayerId]: { prompt: localized(CHARADES_PROMPTS[promptIndex % CHARADES_PROMPTS.length]!.text) },
-      };
-      break;
-    case "forbidden-word": {
-      const selected = FORBIDDEN_WORD_PROMPTS[promptIndex % FORBIDDEN_WORD_PROMPTS.length]!;
-      Object.assign(base, { activePlayerId: activePlayer.id, timerEndsAt: now + 60_000, promptIndex, usedPromptIds: [...(prior?.usedPromptIds ?? []), promptIndex].slice(-50) });
-      const secret = { prompt: localized(selected.text), forbidden: selected.forbidden.map(localized) };
-      privateByPlayerId = { [activePlayer.id]: secret, [room.hostPlayerId]: secret };
+    case "forbidden-word":
+    case "rapid-fire": {
+      const teams = timedTeams(room);
+      const activeTeam = teams[(round - 1) % teams.length]!;
+      const actorIndex = Math.floor((round - 1) / teams.length) % activeTeam.playerIds.length;
+      const activeActorId = activeTeam.playerIds[actorIndex]!;
+      const history = [...(prior?.roundPromptHistory ?? [])];
+      const currentPromptIndex = history.length;
+      const selected = timedPrompt(gameId, currentPromptIndex);
+      Object.assign(base, {
+        teams,
+        activeTeamId: activeTeam.id,
+        activeActorId,
+        activePlayerId: activeActorId,
+        teamScores: prior?.teamScores ?? { "team-1": 0, "team-2": 0 },
+        roundStartScore: (prior?.teamScores ?? { "team-1": 0, "team-2": 0 })[activeTeam.id],
+        timerEndsAt: now + timedDuration(),
+        promptIndex: currentPromptIndex,
+        roundPromptHistory: history,
+        summary: { correct: 0, skipped: 0, failed: 0, violations: 0 },
+      });
+      const secret: Record<string, JsonValue> = { prompt: localized(selected.text) };
+      if ("forbidden" in selected && Array.isArray(selected.forbidden)) {
+        secret.forbidden = selected.forbidden.map((word) => localized(word));
+      }
+      privateByPlayerId = { [activeActorId]: secret, [room.hostPlayerId]: secret };
       break;
     }
-    case "rapid-fire":
-      Object.assign(base, { activePlayerId: activePlayer.id, timerEndsAt: now + 60_000, promptIndex, usedPromptIds: [...(prior?.usedPromptIds ?? []), promptIndex].slice(-50) });
-      privateByPlayerId = {
-        [activePlayer.id]: { prompt: localized(RAPID_FIRE_PROMPTS[promptIndex % RAPID_FIRE_PROMPTS.length]!.text) },
-        [room.hostPlayerId]: { prompt: localized(RAPID_FIRE_PROMPTS[promptIndex % RAPID_FIRE_PROMPTS.length]!.text) },
-      };
-      break;
     case "out-of-loop": {
       const category = CATEGORIES[promptIndex % CATEGORIES.length]!;
       const chosenWord = category.words[promptIndex % category.words.length]!;
@@ -148,7 +175,7 @@ export function reduceGame(
     "out-of-loop": "out-of-loop/", "who-am-i": "who-am-i/",
     "most-likely-to": "most-likely/", "two-truths-lie": "two-truths/",
   };
-  if (!action.type.startsWith(expectedPrefix[room.selectedGame])) {
+  if (action.type !== "timed/expire" && !action.type.startsWith(expectedPrefix[room.selectedGame])) {
     throw new RoomError("INVALID_ACTION", "Action does not belong to the selected game.");
   }
 
@@ -165,15 +192,47 @@ export function reduceGame(
       state.phase = "result";
       break;
     }
-    case "charades/score":
-    case "forbidden-word/score":
-    case "rapid-fire/score": {
-      requireHost(isHost); exact(action, ["type", "correct"]);
-      if (state.phase !== "play" || typeof action.correct !== "boolean") throw new RoomError("INVALID_ACTION", "Round is already complete.");
-      const activeId = state.activePlayerId as string;
-      if (action.correct) state.scores[activeId] += 1;
-      state.lastScoredPlayerId = action.correct ? activeId : null;
+    case "charades/mark":
+    case "forbidden-word/mark":
+    case "rapid-fire/mark": {
+      requireHost(isHost); exact(action, ["type", "outcome"]);
+      if (state.phase !== "play" || now > state.timerEndsAt) {
+        throw new RoomError("INVALID_ACTION", "The timed round has expired.");
+      }
+      const allowed = action.type === "charades/mark" ? ["correct", "skip", "failed"] :
+        action.type === "forbidden-word/mark" ? ["correct", "skip", "violation"] : ["correct", "skip"];
+      if (!allowed.includes(action.outcome)) throw new RoomError("INVALID_ACTION", "Outcome is not valid for this game.");
+      if (action.outcome === "correct") {
+        state.teamScores[state.activeTeamId] += 1;
+        state.summary.correct += 1;
+      } else if (action.outcome === "skip") {
+        state.summary.skipped += 1;
+      } else if (action.outcome === "failed") {
+        state.summary.failed += 1;
+      } else {
+        state.summary.violations += 1;
+        state.teamScores[state.activeTeamId] = Math.max(state.roundStartScore, state.teamScores[state.activeTeamId] - 1);
+      }
+      state.roundPromptHistory = [...state.roundPromptHistory, state.promptIndex];
+      state.promptIndex += 1;
+      const selected = timedPrompt(room.selectedGame, state.promptIndex);
+      const secret: Record<string, JsonValue> = { prompt: localized(selected.text) };
+      if ("forbidden" in selected && Array.isArray(selected.forbidden)) {
+        secret.forbidden = selected.forbidden.map((word) => localized(word));
+      }
+      privateState[state.activeActorId] = secret;
+      privateState[room.hostPlayerId] = secret;
+      break;
+    }
+    case "timed/expire": {
+      requireHost(isHost); exact(action, ["type"]);
+      if (!["charades", "forbidden-word", "rapid-fire"].includes(room.selectedGame) ||
+        state.phase !== "play" || now < state.timerEndsAt) {
+        throw new RoomError("INVALID_ACTION", "Timed round cannot expire yet.");
+      }
       state.phase = "result";
+      state.roundPromptHistory = state.roundPromptHistory.includes(state.promptIndex)
+        ? state.roundPromptHistory : [...state.roundPromptHistory, state.promptIndex];
       break;
     }
     case "out-of-loop/open-vote": {
@@ -197,11 +256,22 @@ export function reduceGame(
       if (state.voteCount === room.players.length) {
         const counts: Record<string, number> = {};
         Object.values(votes).forEach((id) => { counts[id] = (counts[id] ?? 0) + 1; });
-        state.phase = action.type === "out-of-loop/vote" ? "outsider-guess" : "result";
         state.voteCounts = counts;
         if (action.type === "out-of-loop/vote") {
           state.outsiderPlayerId = privateState.__server.outsider;
+          const highest = Math.max(...Object.values(counts));
+          const top = Object.entries(counts).filter(([, count]) => count === highest).map(([id]) => id);
+          state.caught = top.length === 1 && top[0] === state.outsiderPlayerId;
+          if (state.caught) {
+            state.phase = "outsider-guess";
+          } else {
+            state.phase = "result";
+            state.outsiderCorrect = true;
+            state.word = privateState.__server.word;
+            state.scores[state.outsiderPlayerId] += 1;
+          }
         } else {
+          state.phase = "result";
           const highest = Math.max(...Object.values(counts));
           state.winnerPlayerIds = Object.entries(counts).filter(([, count]) => count === highest).map(([id]) => id);
         }
@@ -219,6 +289,9 @@ export function reduceGame(
       state.outsiderGuess = action.word.trim();
       state.outsiderCorrect = Object.values(expected).some((word) => word.toLowerCase() === action.word.trim().toLowerCase());
       state.word = expected;
+      if (state.outsiderCorrect) state.scores[actor.id] += 1;
+      else room.players.filter((candidate) => candidate.id !== actor.id)
+        .forEach((candidate) => { state.scores[candidate.id] += 1; });
       state.phase = "result";
       break;
     }

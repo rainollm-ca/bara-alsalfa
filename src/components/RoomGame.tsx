@@ -15,8 +15,8 @@ type Props = {
 };
 
 const text = {
-  en: { round: "Round", correct: "Correct", skip: "Skip", vote: "Vote", waiting: "Waiting for the other players…", result: "Round result", submit: "Submit statements", truth1: "Statement 1", truth2: "Statement 2", truth3: "Statement 3", lie: "The lie is", identity: "Other identities", role: "Your secret", outsider: "You are out of the loop", word: "Secret word", next: "Next round", lobby: "Back to lobby", openVote: "Open voting", guess: "Guess the word", winner: "Winner", active: "Active player" },
-  ar: { round: "الجولة", correct: "صحيح", skip: "تخطّي", vote: "صوّت", waiting: "بانتظار بقية اللاعبين…", result: "نتيجة الجولة", submit: "أرسل العبارات", truth1: "العبارة ١", truth2: "العبارة ٢", truth3: "العبارة ٣", lie: "الكذبة هي", identity: "هويات الآخرين", role: "سرّك", outsider: "أنت برا السالفة", word: "الكلمة السرية", next: "الجولة التالية", lobby: "العودة للغرفة", openVote: "افتح التصويت", guess: "احزر الكلمة", winner: "الفائز", active: "اللاعب الحالي" },
+  en: { round: "Round", correct: "Correct", skip: "Skip", failed: "Failed", violation: "Violation", expire: "End timed round", vote: "Vote", waiting: "Waiting for the other players…", result: "Round result", submit: "Submit statements", truth1: "Statement 1", truth2: "Statement 2", truth3: "Statement 3", lie: "The lie is", identity: "Other identities", role: "Your secret", outsider: "You are out of the loop", word: "Secret word", next: "Next round", lobby: "Back to lobby", openVote: "Open voting", guess: "Guess the word", winner: "Winner", active: "Active player" },
+  ar: { round: "الجولة", correct: "صحيح", skip: "تخطّي", failed: "فشل", violation: "مخالفة", expire: "أنهِ الجولة المؤقتة", vote: "صوّت", waiting: "بانتظار بقية اللاعبين…", result: "نتيجة الجولة", submit: "أرسل العبارات", truth1: "العبارة ١", truth2: "العبارة ٢", truth3: "العبارة ٣", lie: "الكذبة هي", identity: "هويات الآخرين", role: "سرّك", outsider: "أنت برا السالفة", word: "الكلمة السرية", next: "الجولة التالية", lobby: "العودة للغرفة", openVote: "افتح التصويت", guess: "احزر الكلمة", winner: "الفائز", active: "اللاعب الحالي" },
 };
 
 function localized(value: unknown, locale: Locale) {
@@ -33,9 +33,16 @@ export function RoomGame({ locale, room, session, api, onState }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [guess, setGuess] = useState("");
+  const [now, setNow] = useState(() => Date.now());
   const phaseHeading = useRef<HTMLHeadingElement>(null);
   const hostGames = new Set(["category-challenge", "charades", "forbidden-word", "rapid-fire"]);
   useEffect(() => phaseHeading.current?.focus(), [state.phase, state.round]);
+  useEffect(() => {
+    if (!state.timerEndsAt || state.phase !== "play") return;
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 250);
+    return () => window.clearInterval(timer);
+  }, [state.phase, state.timerEndsAt]);
 
   async function act(action: GameRoomAction) {
     if (busy) return;
@@ -60,7 +67,8 @@ export function RoomGame({ locale, room, session, api, onState }: Props) {
       {state.answer && <p className="roomAnswer">{localized(state.answer, locale)}</p>}
       {Array.isArray(secret.forbidden) && <div className="forbiddenWords">{secret.forbidden.map((word: unknown, index: number) => <span key={index}>{localized(word, locale)}</span>)}</div>}
       {state.activePlayerId && <p>{t.active}: {room.players.find((player) => player.id === state.activePlayerId)?.name}</p>}
-      {state.timerEndsAt && <p className="roomTimer" data-timer-ends-at={state.timerEndsAt}>{Math.max(0, Math.ceil((state.timerEndsAt - Date.now()) / 1000))}s</p>}
+      {state.activeTeamId && <p>{state.activeTeamId}</p>}
+      {state.timerEndsAt && <p className="roomTimer" data-timer-ends-at={state.timerEndsAt}>{Math.max(0, Math.ceil((state.timerEndsAt - now) / 1000))}s</p>}
 
       {room.selectedGame === "out-of-loop" && <>
         <h2>{t.role}</h2>
@@ -109,10 +117,13 @@ export function RoomGame({ locale, room, session, api, onState }: Props) {
         <div className="roomActionRow">
           {room.selectedGame === "category-challenge" ? room.players.map((player) =>
             <button disabled={busy} key={player.id} onClick={() => act({ type: "category/score", correctPlayerId: player.id })}>{t.correct}: {player.name}</button>) :
-            <button disabled={busy} onClick={() => act({ type: `${room.selectedGame}/score` as "charades/score", correct: true })}>{t.correct}</button>}
+            <button disabled={busy} onClick={() => act({ type: `${room.selectedGame}/mark` as "charades/mark", outcome: "correct" })}>{t.correct}</button>}
           <button disabled={busy} onClick={() => act(room.selectedGame === "category-challenge"
             ? { type: "category/score", correctPlayerId: null }
-            : { type: `${room.selectedGame}/score` as "charades/score", correct: false })}>{t.skip}</button>
+            : { type: `${room.selectedGame}/mark` as "charades/mark", outcome: "skip" })}>{t.skip}</button>
+          {room.selectedGame === "charades" && <button disabled={busy} onClick={() => act({ type: "charades/mark", outcome: "failed" })}>{t.failed}</button>}
+          {room.selectedGame === "forbidden-word" && <button disabled={busy} onClick={() => act({ type: "forbidden-word/mark", outcome: "violation" })}>{t.violation}</button>}
+          {room.selectedGame !== "category-challenge" && <button disabled={busy} onClick={() => act({ type: "timed/expire" })}>{t.expire}</button>}
         </div>
       )}
       {state.phase === "result" && <div className="roomResult" aria-live="polite">
@@ -123,12 +134,18 @@ export function RoomGame({ locale, room, session, api, onState }: Props) {
         {state.voteCounts && Object.entries(state.voteCounts).map(([id, count]) => <p key={id}>{room.players.find((p) => p.id === id)?.name}: {String(count)}</p>)}
         {state.winnerPlayerIds && <p>{t.winner}: {state.winnerPlayerIds.map((id: string) => room.players.find((p) => p.id === id)?.name).join(", ")}</p>}
         {state.outsiderPlayerId && <p>{room.players.find((p) => p.id === state.outsiderPlayerId)?.name} — {localized(state.word, locale)} — {state.outsiderCorrect ? t.correct : t.skip}</p>}
+        {state.summary && <p className="roundSummary">
+          {t.correct}: {state.summary.correct ?? 0} · {t.skip}: {state.summary.skipped ?? 0}
+          {state.summary.failed ? ` · ${t.failed}: ${state.summary.failed}` : ""}
+          {state.summary.violations ? ` · ${t.violation}: ${state.summary.violations}` : ""}
+        </p>}
         {room.self.isHost && <div className="roomActionRow">
           <button disabled={busy} onClick={() => act({ type: "game/next-round" })}>{t.next}</button>
           <button disabled={busy} onClick={() => act({ type: "game/return-lobby" })}>{t.lobby}</button>
         </div>}
       </div>}
       {scores && <div className="roomScores">{room.players.map((player) => <span key={player.id}>{player.name}: <b>{scores[player.id] ?? 0}</b></span>)}</div>}
+      {state.teamScores && <div className="roomScores">{Object.entries(state.teamScores).map(([team, score]) => <span key={team}>{team}: <b>{String(score)}</b></span>)}</div>}
       {error && <p role="alert">{error}</p>}
       {state.phase !== "result" && !room.self.isHost && secret.voted && <p>{t.waiting}</p>}
       {room.self.isHost && state.phase !== "result" && <button className="textButton" disabled={busy} onClick={() => act({ type: "game/return-lobby" })}>{t.lobby}</button>}

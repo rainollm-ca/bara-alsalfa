@@ -7,12 +7,13 @@ import { RoomRepository } from "../src/rooms/repository";
 import { toPlayerView } from "../src/rooms/playerView";
 
 function started(gameId: GameId, players = ["Host", "Guest", "Third", "Fourth"]) {
-  const rooms = new RoomRepository({ codeFactory: () => "PLAY12" });
+  let now = 10_000;
+  const rooms = new RoomRepository({ codeFactory: () => "PLAY12", clock: () => now });
   const created = rooms.create({ hostName: players[0]! });
   const joined = players.slice(1).map((name) => rooms.join(created.code, { name }));
   rooms.applyAction(created.code, created.hostToken, { type: "lobby/select-game", gameId });
   const room = rooms.applyAction(created.code, created.hostToken, { type: "lobby/start" });
-  return { rooms, created, joined, room };
+  return { rooms, created, joined, room, advance: (ms: number) => { now += ms; } };
 }
 
 describe("authoritative room game reducers", () => {
@@ -24,11 +25,8 @@ describe("authoritative room game reducers", () => {
 
   it.each([
     ["category-challenge", { type: "category/score", correctPlayerId: "host" }],
-    ["charades", { type: "charades/score", correct: true }],
-    ["forbidden-word", { type: "forbidden-word/score", correct: true }],
-    ["rapid-fire", { type: "rapid-fire/score", correct: true }],
   ] as const)("lets only host advance authoritative %s rounds", (gameId, partial) => {
-    const { rooms, created, joined, room } = started(gameId);
+    const { rooms, created, joined, room, advance } = started(gameId);
     const hostId = room.hostPlayerId;
     const action = { ...partial, type: partial.type, ...(gameId === "category-challenge" ? { correctPlayerId: hostId } : {}) } as RoomAction;
     expect(() => rooms.applyAction(created.code, joined[0]!.playerToken, action))
@@ -43,16 +41,16 @@ describe("authoritative room game reducers", () => {
   it("rejects wrong-game actions and score/state forgery payloads", () => {
     const { rooms, created } = started("charades");
     expect(() => rooms.applyAction(created.code, created.hostToken, {
-      type: "rapid-fire/score", correct: true,
+      type: "rapid-fire/mark", outcome: "correct",
     })).toThrowError(expect.objectContaining({ code: "INVALID_ACTION" }));
     expect(() => rooms.applyAction(created.code, created.hostToken, {
-      type: "charades/score", correct: true, score: 999,
+      type: "charades/mark", outcome: "correct", score: 999,
     } as never)).toThrowError(expect.objectContaining({ code: "INVALID_ACTION" }));
   });
 
   it.each(["out-of-loop", "most-likely-to"] as const)("accepts one private vote per player and reveals after all vote in %s", (gameId) => {
-    const { rooms, created, joined, room } = started(gameId);
-    const targetId = room.players[0]!.id;
+    const { rooms, created, joined, room, advance } = started(gameId);
+    const targetId = gameId === "out-of-loop" ? room.players.at(-1)!.id : room.players[0]!.id;
     const tokens = [created.playerToken, ...joined.map((entry) => entry.playerToken)];
     if (gameId === "out-of-loop") {
       rooms.applyAction(created.code, created.hostToken, { type: "out-of-loop/open-vote" });
@@ -75,13 +73,20 @@ describe("authoritative room game reducers", () => {
   });
 
   it.each(GAME_CATALOG.map((game) => game.id))("starts a fresh unused round and can return %s to lobby", (gameId) => {
-    const { rooms, created, joined, room } = started(gameId);
+    const { rooms, created, joined, room, advance } = started(gameId);
     const state = room.gameState!.publicData as Record<string, any>;
     const host = created.hostToken;
-    if (["category-challenge", "charades", "forbidden-word", "rapid-fire"].includes(gameId)) {
+    if (gameId === "category-challenge") {
       rooms.applyAction(created.code, host, gameId === "category-challenge"
         ? { type: "category/score", correctPlayerId: room.players[1]!.id }
-        : { type: `${gameId}/score`, correct: true } as never);
+        : { type: "category/score", correctPlayerId: null });
+    } else if (["charades", "forbidden-word", "rapid-fire"].includes(gameId)) {
+      rooms.applyAction(created.code, host, {
+        type: `${gameId}/mark`,
+        outcome: "correct",
+      } as never);
+      advance(60_001);
+      rooms.applyAction(created.code, host, { type: "timed/expire" });
     } else if (gameId === "who-am-i") {
       rooms.applyAction(created.code, created.playerToken, { type: "who-am-i/guess", correct: true });
     } else if (gameId === "most-likely-to") {
@@ -112,6 +117,36 @@ describe("authoritative room game reducers", () => {
       .toThrowError(expect.objectContaining({ code: "HOST_ONLY" }));
     expect(rooms.applyAction(created.code, host, { type: "game/return-lobby" }).status).toBe("lobby");
     expect(completed.status).toBe("playing");
+  });
+
+  it.each(["charades", "forbidden-word", "rapid-fire"] as const)("runs a clock-enforced multi-prompt team round for %s", (gameId) => {
+    const { rooms, created, room, advance } = started(gameId);
+    const first = room.gameState!.publicData as Record<string, any>;
+    const mark = (outcome: string) => rooms.applyAction(created.code, created.hostToken, {
+      type: `${gameId}/mark`, outcome,
+    } as never);
+    mark("correct");
+    mark("skip");
+    if (gameId === "charades") mark("failed");
+    if (gameId === "forbidden-word") {
+      mark("correct");
+      mark("violation");
+    }
+    const active = rooms.get(created.code)!.gameState!.publicData as Record<string, any>;
+    expect(active.promptIndex).toBeGreaterThan(first.promptIndex);
+    expect(new Set(active.roundPromptHistory).size).toBe(active.roundPromptHistory.length);
+    expect(active.teamScores[active.activeTeamId]).toBeGreaterThanOrEqual(active.roundStartScore);
+    expect(() => rooms.applyAction(created.code, created.hostToken, { type: "timed/expire" }))
+      .toThrowError(expect.objectContaining({ code: "INVALID_ACTION" }));
+    advance(60_001);
+    expect(() => mark("correct")).toThrowError(expect.objectContaining({ code: "INVALID_ACTION" }));
+    const result = rooms.applyAction(created.code, created.hostToken, { type: "timed/expire" });
+    expect((result.gameState!.publicData as Record<string, any>).phase).toBe("result");
+    const next = rooms.applyAction(created.code, created.hostToken, { type: "game/next-round" });
+    const nextState = next.gameState!.publicData as Record<string, any>;
+    expect(nextState.activeTeamId).not.toBe(first.activeTeamId);
+    expect(nextState.activeActorId).not.toBe(first.activeActorId);
+    expect(nextState.timerEndsAt).toBeGreaterThan(active.timerEndsAt);
   });
 
   it("allows only the intended player to resolve Who Am I without exposing their identity", () => {
@@ -158,5 +193,17 @@ describe("authoritative room game reducers", () => {
     }
     const result = rooms.get(created.code)!.gameState!.publicData as Record<string, unknown>;
     expect(result).toMatchObject({ phase: "result", lieIndex: 1 });
+  });
+
+  it("ends Out of Loop immediately with an outsider win when the vote misses", () => {
+    const { rooms, created, joined, room } = started("out-of-loop");
+    rooms.applyAction(created.code, created.hostToken, { type: "out-of-loop/open-vote" });
+    for (const token of [created.playerToken, ...joined.map((item) => item.playerToken)]) {
+      rooms.applyAction(created.code, token, { type: "out-of-loop/vote", playerId: room.players[0]!.id });
+    }
+    const state = rooms.get(created.code)!.gameState!.publicData as Record<string, any>;
+    expect(state).toMatchObject({ phase: "result", caught: false, outsiderCorrect: true });
+    expect(state.scores[state.outsiderPlayerId]).toBe(1);
+    expect(state.word).toBeDefined();
   });
 });

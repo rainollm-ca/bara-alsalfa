@@ -99,9 +99,10 @@ export type GameRoomAction =
   | Readonly<{ type: "game/next-round" }>
   | Readonly<{ type: "game/return-lobby" }>
   | Readonly<{ type: "category/score"; correctPlayerId: string | null }>
-  | Readonly<{ type: "charades/score"; correct: boolean }>
-  | Readonly<{ type: "forbidden-word/score"; correct: boolean }>
-  | Readonly<{ type: "rapid-fire/score"; correct: boolean }>
+  | Readonly<{ type: "charades/mark"; outcome: "correct" | "skip" | "failed" }>
+  | Readonly<{ type: "forbidden-word/mark"; outcome: "correct" | "skip" | "violation" }>
+  | Readonly<{ type: "rapid-fire/mark"; outcome: "correct" | "skip" }>
+  | Readonly<{ type: "timed/expire" }>
   | Readonly<{ type: "out-of-loop/vote"; playerId: string }>
   | Readonly<{ type: "out-of-loop/open-vote" }>
   | Readonly<{ type: "out-of-loop/guess"; word: string }>

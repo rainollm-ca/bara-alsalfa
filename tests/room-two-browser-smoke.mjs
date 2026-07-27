@@ -25,7 +25,7 @@ async function waitForServer() {
 async function startServer() {
   server = spawn("npm", ["start"], {
     cwd: process.cwd(),
-    env: { ...process.env, PORT: port, ROOM_DB_PATH: dbPath, ROOM_CREATE_LIMIT: "20" },
+    env: { ...process.env, PORT: port, ROOM_DB_PATH: dbPath, ROOM_CREATE_LIMIT: "20", ROOM_TIMED_ROUND_MS: "300" },
     stdio: ["ignore", "pipe", "pipe"],
   });
   await waitForServer();
@@ -148,7 +148,12 @@ try {
       let finalAction;
       let finalToken = created.hostToken;
       if (gameId === "category-challenge") finalAction = { type: "category/score", correctPlayerId: participants[1].id };
-      else if (["charades", "forbidden-word", "rapid-fire"].includes(gameId)) finalAction = { type: `${gameId}/score`, correct: true };
+      else if (["charades", "forbidden-word", "rapid-fire"].includes(gameId)) {
+        finalAction = { type: `${gameId}/mark`, outcome: "correct" };
+        await post(actionPath, { contractVersion: 1, action: finalAction }, created.hostToken);
+        await new Promise((resolve) => setTimeout(resolve, 350));
+        await post(actionPath, { contractVersion: 1, action: { type: "timed/expire" } }, created.hostToken);
+      }
       else if (gameId === "who-am-i") { finalAction = { type: "who-am-i/guess", correct: true }; finalToken = participants[0].playerToken; }
       else if (gameId === "most-likely-to") {
         for (const participant of participants) await post(actionPath, { contractVersion: 1, action: { type: "most-likely/vote", playerId: participants[0].id } }, participant.playerToken);
@@ -166,7 +171,7 @@ try {
         finalAction = { type: "two-truths/vote", index: 1 };
         finalToken = participants[1].playerToken;
       }
-      if (!["most-likely-to", "out-of-loop", "two-truths-lie"].includes(gameId)) {
+      if (!["charades", "forbidden-word", "rapid-fire", "most-likely-to", "out-of-loop", "two-truths-lie"].includes(gameId)) {
         await post(actionPath, { contractVersion: 1, action: finalAction }, finalToken);
       }
       const replay = await post(actionPath, { contractVersion: 1, action: finalAction }, finalToken);

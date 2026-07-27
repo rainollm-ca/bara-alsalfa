@@ -294,11 +294,11 @@ describe("room HTTP API", () => {
       contractVersion: 1, action: { type: "lobby/start" },
     }, created.hostToken), context(created.code));
     const wrongGame = await roomAction(jsonRequest(`http://localhost/api/rooms/${created.code}/action`, {
-      contractVersion: 1, action: { type: "rapid-fire/score", correct: true },
+      contractVersion: 1, action: { type: "rapid-fire/mark", outcome: "correct" },
     }, created.hostToken), context(created.code));
     expect(wrongGame.status).toBe(422);
     const forged = await roomAction(jsonRequest(`http://localhost/api/rooms/${created.code}/action`, {
-      contractVersion: 1, action: { type: "charades/score", correct: true, score: 999, publicData: { won: true } },
+      contractVersion: 1, action: { type: "charades/mark", outcome: "correct", score: 999, publicData: { won: true } },
     }, created.hostToken), context(created.code));
     expect(forged.status).toBe(422);
   });
