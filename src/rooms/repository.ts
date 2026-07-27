@@ -15,7 +15,7 @@ import {
   type RoomEvent,
   type RoomPlayer,
 } from "./contracts";
-import { initializeGame, reduceGame } from "./gameplay";
+import { initializeGame, nextGameRound, reduceGame } from "./gameplay";
 
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const CODE_PATTERN = /^[A-Z0-9]{6}$/;
@@ -383,7 +383,7 @@ export class RoomRepository {
     if (!actor && !isHost) {
       throw new RoomError("INVALID_TOKEN", "Actor token is not valid for this room.");
     }
-    if (action.type.startsWith("lobby/") && !isHost) {
+    if ((action.type.startsWith("lobby/") || action.type.startsWith("game/")) && !isHost) {
       throw new RoomError("HOST_ONLY", "Only the host can perform this action.");
     }
     const now = this.clock();
@@ -403,7 +403,7 @@ export class RoomRepository {
         }
         return this.update(room, {
           status: "playing",
-          gameState: initializeGame(room),
+          gameState: initializeGame(room, now),
           events: [
             ...room.events,
             { type: "room/status-changed", status: "playing", at: now },
@@ -433,6 +433,17 @@ export class RoomRepository {
           ],
         });
       }
+      case "game/next-round":
+        return this.update(room, {
+          gameState: nextGameRound(room, now),
+        });
+      case "game/return-lobby":
+        if (room.status !== "playing") return this.invalidAction("Room is already in the lobby.");
+        return this.update(room, {
+          status: "lobby",
+          gameState: null,
+          events: [...room.events, { type: "room/status-changed", status: "lobby", at: now }],
+        });
       default:
         return this.update(room, {
           gameState: reduceGame(
@@ -440,6 +451,7 @@ export class RoomRepository {
             actor?.id ?? (isHost ? room.hostPlayerId : undefined),
             isHost,
             action,
+            now,
           ),
           events: [...room.events, {
             type: "game/action-applied",
@@ -595,6 +607,14 @@ export class RoomRepository {
       case "who-am-i/guess":
       case "two-truths/submit":
       case "two-truths/vote":
+      case "out-of-loop/open-vote":
+      case "out-of-loop/guess":
+      case "game/next-round":
+      case "game/return-lobby":
+        if ((action.type === "game/next-round" || action.type === "game/return-lobby") &&
+          Object.keys(action).length !== 1) {
+          return this.invalidAction("Lifecycle actions do not accept payload fields.");
+        }
         return;
       default:
         return this.invalidAction("Unknown room action.");

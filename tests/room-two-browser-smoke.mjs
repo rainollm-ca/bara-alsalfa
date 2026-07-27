@@ -25,7 +25,7 @@ async function waitForServer() {
 async function startServer() {
   server = spawn("npm", ["start"], {
     cwd: process.cwd(),
-    env: { ...process.env, PORT: port, ROOM_DB_PATH: dbPath },
+    env: { ...process.env, PORT: port, ROOM_DB_PATH: dbPath, ROOM_CREATE_LIMIT: "20" },
     stdio: ["ignore", "pipe", "pipe"],
   });
   await waitForServer();
@@ -74,7 +74,7 @@ try {
   await host.getByRole("button", { name: "Start game" }).click();
   await host.locator('[data-game-id="category-challenge"][data-game-phase="play"]').waitFor();
   await guest.locator('[data-game-id="category-challenge"][data-game-phase="play"]').waitFor({ timeout: 6_000 });
-  await host.getByRole("button", { name: "Correct" }).click();
+  await host.getByRole("button", { name: "Correct: Smoke Host" }).click();
   await host.locator('[data-game-phase="result"]').waitFor();
   await guest.locator('[data-game-phase="result"]').waitFor({ timeout: 6_000 });
   if (!(await guest.locator(".roomScores").innerText()).includes("Smoke Host: 1") ||
@@ -118,6 +118,72 @@ try {
     };
   });
   if (Object.values(privacy).some((value) => !value)) throw new Error("Out of Loop privacy projection failed.");
+  const reducerMatrix = await host.evaluate(async () => {
+    const postRaw = (path, body, token) => fetch(path, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify(body),
+    });
+    const post = async (path, body, token) => {
+      const response = await postRaw(path, body, token);
+      return { status: response.status, data: await response.json() };
+    };
+    const definitions = [
+      ["category-challenge", 2], ["charades", 4], ["forbidden-word", 4], ["rapid-fire", 2],
+      ["who-am-i", 2], ["most-likely-to", 3], ["out-of-loop", 3], ["two-truths-lie", 3],
+    ];
+    const results = {};
+    for (const [gameId, count] of definitions) {
+      const created = (await post("/api/rooms", { contractVersion: 1, hostName: `${gameId} Host`, gameId })).data;
+      const participants = [{ playerToken: created.playerToken, id: created.room.self.id }];
+      for (let index = 1; index < count; index += 1) {
+        const joined = (await post(`/api/rooms/${created.code}/join`, { contractVersion: 1, name: `${gameId} P${index}` })).data;
+        participants.push({ playerToken: joined.playerToken, id: joined.room.self.id });
+      }
+      const actionPath = `/api/rooms/${created.code}/action`;
+      const started = (await post(actionPath, { contractVersion: 1, action: { type: "lobby/start" } }, created.hostToken)).data.room;
+      const initialGuesser = count > 1 ? (await fetch(`/api/rooms/${created.code}/state`, {
+        headers: { authorization: `Bearer ${participants[1].playerToken}` },
+      }).then((response) => response.json())).room : null;
+      let finalAction;
+      let finalToken = created.hostToken;
+      if (gameId === "category-challenge") finalAction = { type: "category/score", correctPlayerId: participants[1].id };
+      else if (["charades", "forbidden-word", "rapid-fire"].includes(gameId)) finalAction = { type: `${gameId}/score`, correct: true };
+      else if (gameId === "who-am-i") { finalAction = { type: "who-am-i/guess", correct: true }; finalToken = participants[0].playerToken; }
+      else if (gameId === "most-likely-to") {
+        for (const participant of participants) await post(actionPath, { contractVersion: 1, action: { type: "most-likely/vote", playerId: participants[0].id } }, participant.playerToken);
+        finalAction = { type: "most-likely/vote", playerId: participants[0].id };
+        finalToken = participants[0].playerToken;
+      } else if (gameId === "out-of-loop") {
+        await post(actionPath, { contractVersion: 1, action: { type: "out-of-loop/open-vote" } }, created.hostToken);
+        for (const participant of participants) await post(actionPath, { contractVersion: 1, action: { type: "out-of-loop/vote", playerId: participants.at(-1).id } }, participant.playerToken);
+        finalAction = { type: "out-of-loop/guess", word: "Damascus" };
+        finalToken = participants.at(-1).playerToken;
+        await post(actionPath, { contractVersion: 1, action: finalAction }, finalToken);
+      } else {
+        await post(actionPath, { contractVersion: 1, action: { type: "two-truths/submit", statements: ["A", "B", "C"], lieIndex: 1 } }, participants[0].playerToken);
+        for (const participant of participants.slice(1)) await post(actionPath, { contractVersion: 1, action: { type: "two-truths/vote", index: 1 } }, participant.playerToken);
+        finalAction = { type: "two-truths/vote", index: 1 };
+        finalToken = participants[1].playerToken;
+      }
+      if (!["most-likely-to", "out-of-loop", "two-truths-lie"].includes(gameId)) {
+        await post(actionPath, { contractVersion: 1, action: finalAction }, finalToken);
+      }
+      const replay = await post(actionPath, { contractVersion: 1, action: finalAction }, finalToken);
+      const next = await post(actionPath, { contractVersion: 1, action: { type: "game/next-round" } }, created.hostToken);
+      const before = started.gameState.publicData;
+      const after = next.data.room.gameState.publicData;
+      if (replay.status < 400 || next.status !== 200 || after.round !== 2 || after.promptIndex === before.promptIndex) {
+        throw new Error(`${gameId} lifecycle/replay smoke failed`);
+      }
+      if (["charades", "forbidden-word", "rapid-fire"].includes(gameId)) {
+        const publicText = JSON.stringify(started.gameState.publicData);
+        if (publicText.includes('"prompt"') || initialGuesser.gameState.privateData?.prompt) throw new Error(`${gameId} prompt leaked`);
+      }
+      results[gameId] = { result: true, replayRejected: true, nextRound: 2 };
+    }
+    return results;
+  });
   console.log(JSON.stringify({
     databaseHealth: true,
     hostCreatedFromUi: true,
@@ -126,6 +192,7 @@ try {
     synchronizedStatus: "round-result",
     authoritativeCategoryRound: true,
     outOfLoopPrivacy: privacy,
+    allGameRoundMatrix: reducerMatrix,
     inviteUrlRoutedAtRoot: true,
     persistedAcrossServerRestart: managedServer || Boolean(restartContainer),
     credentialLeak: false,

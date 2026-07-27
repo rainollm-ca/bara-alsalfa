@@ -18,7 +18,10 @@ export const dynamic = "force-dynamic";
 export async function POST(request: Request) {
   try {
     const ip = clientIdentity(request);
-    if (!roomRepository().consumeCreate(ip)) {
+    const configuredLimit = Number(process.env.ROOM_CREATE_LIMIT ?? 5);
+    const createLimit = Number.isInteger(configuredLimit) && configuredLimit >= 1 && configuredLimit <= 100
+      ? configuredLimit : 5;
+    if (!roomRepository().consumeCreate(ip, createLimit)) {
       throw new HttpError(
         429,
         "RATE_LIMITED",
