@@ -100,6 +100,9 @@ describe("saved local session envelope", () => {
       locale: "en",
       updatedAt: now,
       controller: { phase: "setup" },
+      revision: 1,
+      generation: 0,
+      writerId: "legacy",
     });
   });
 

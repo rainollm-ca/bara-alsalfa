@@ -8,7 +8,7 @@ import { CATEGORY_CHALLENGE_CATEGORIES } from "../../games/content/categoryChall
 import { buildBoard, type CategoryChallengeBoard } from "../../games/engines/categoryChallenge";
 import type { Locale } from "../../lib/game";
 import { getGameStorage } from "../../lib/useGameSessionState";
-import { parseSavedSession, serializeSavedSession, SESSION_KEY } from "../../lib/session";
+import { getSessionStore } from "../../lib/session";
 
 type TeamId = "teamOne" | "teamTwo";
 export type QuestionTimer = {
@@ -205,8 +205,12 @@ export function restoreCategoryController(
       ? {
           ...stored.activeQuestion,
           revealed: false,
-          timer: stored.activeQuestion.timer.status === "running" && remainingQuestionSeconds(stored.activeQuestion.timer, now) === 0
-            ? stopQuestionTimer(stored.activeQuestion.timer, now)
+          timer: stored.activeQuestion.timer.status === "running"
+            ? {
+                status: "running" as const,
+                remainingMs: remainingMilliseconds(stored.activeQuestion.timer, now),
+                startedAt: now,
+              }
             : stored.activeQuestion.timer,
         }
       : null;
@@ -228,7 +232,7 @@ type Props = {
 export function CategoryChallenge({ locale, onExit, initialSession }: Props) {
   const readSaved = () => {
     const storage = getGameStorage();
-    const saved = storage ? parseSavedSession(storage.getItem(SESSION_KEY)) : null;
+    const saved = storage ? getSessionStore(storage).read() : null;
     return saved?.gameId === "category-challenge"
       ? restoreCategoryController(saved.controller)
       : null;
@@ -248,15 +252,10 @@ export function CategoryChallenge({ locale, onExit, initialSession }: Props) {
   useEffect(() => {
     const storage = getGameStorage();
     if (!storage) return;
-    storage.setItem(SESSION_KEY, serializeSavedSession({
-      gameId: "category-challenge",
-      locale,
-      updatedAt: Date.now(),
-      controller: {
+    getSessionStore(storage).replace("category-challenge", locale, {
         categoryState: { ...state, usedQuestionIds: [...state.usedQuestionIds] },
         board: board ? { ...board, usedQuestionIds: [...board.usedQuestionIds] } : null,
-      },
-    }));
+    });
   }, [board, locale, state]);
 
   useEffect(() => {

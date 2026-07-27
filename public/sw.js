@@ -1,4 +1,4 @@
-const CACHE_VERSION = "bara-shell-v1";
+const CACHE = "bara-shell-v2";
 const APP_SHELL = [
   "/",
   "/manifest.webmanifest",
@@ -9,20 +9,24 @@ const APP_SHELL = [
 ];
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(CACHE_VERSION).then((cache) => cache.addAll(APP_SHELL)));
+  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(APP_SHELL)));
   self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((key) => key.startsWith("bara-") && key !== CACHE_VERSION).map((key) => caches.delete(key))))
+      .then((keys) => Promise.all(keys.filter((key) => key.startsWith("bara-") && key !== CACHE).map((key) => caches.delete(key))))
       .then(() => self.clients.claim()),
   );
 });
 
-function isPrivateRequest(url) {
-  return url.pathname.startsWith("/api/") ||
+function isPrivate(request, url) {
+  return request.method !== "GET" ||
+    request.credentials === "include" ||
+    request.headers.has("authorization") ||
+    request.headers.has("cookie") ||
+    url.pathname.startsWith("/api/") ||
     url.searchParams.has("room") ||
     url.searchParams.has("invite") ||
     url.searchParams.has("token");
@@ -31,36 +35,52 @@ function isPrivateRequest(url) {
 self.addEventListener("fetch", (event) => {
   const { request } = event;
   const url = new URL(request.url);
-  if (request.method !== "GET" || url.origin !== self.location.origin || isPrivateRequest(url)) {
+  if (url.origin !== self.location.origin) {
     event.respondWith(fetch(request));
     return;
   }
 
   if (request.mode === "navigate") {
-    event.respondWith(
-      fetch(request)
-        .then((response) => {
-          if (response.ok && !url.search) {
-            const copy = response.clone();
-            caches.open(CACHE_VERSION).then((cache) => cache.put("/", copy));
-          }
-          return response;
-        })
-        .catch(async () => {
-          const cache = await caches.open(CACHE_VERSION);
-          return cache.match("/") || Response.error();
-        }),
-    );
+    if (
+      url.pathname !== "/" ||
+      url.search ||
+      request.headers.has("authorization") ||
+      request.headers.has("cookie")
+    ) {
+      event.respondWith(fetch(request));
+      return;
+    }
+    event.respondWith((async () => {
+      const cache = await caches.open(CACHE);
+      try {
+        const response = await fetch(request);
+        if (response.ok) await cache.put("/", response.clone());
+        return response;
+      } catch {
+        return await cache.match("/") || Response.error();
+      }
+    })());
     return;
   }
 
-  event.respondWith(
-    caches.match(request).then((cached) => cached || fetch(request).then((response) => {
-      if (response.ok) {
-        const copy = response.clone();
-        caches.open(CACHE_VERSION).then((cache) => cache.put(request, copy));
-      }
-      return response;
-    })),
-  );
+  if (isPrivate(request, url)) {
+    event.respondWith(fetch(request));
+    return;
+  }
+
+  const isPrecachedAsset = APP_SHELL.includes(url.pathname) && url.pathname !== "/";
+  const isImmutableNextAsset = url.pathname.startsWith("/_next/static/");
+  if (!isPrecachedAsset && !isImmutableNextAsset) {
+    event.respondWith(fetch(request));
+    return;
+  }
+
+  event.respondWith((async () => {
+    const cache = await caches.open(CACHE);
+    const cached = await cache.match(request);
+    if (cached) return cached;
+    const response = await fetch(request);
+    if (response.ok) await cache.put(request, response.clone());
+    return response;
+  })());
 });

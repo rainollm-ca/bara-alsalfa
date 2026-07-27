@@ -20,11 +20,10 @@ import { readInviteCode } from "../lib/invite";
 import { PwaStatus } from "../components/PwaStatus";
 import {
   discardSavedSession,
-  parseSavedSession,
-  serializeSavedSession,
-  SESSION_KEY,
+  getSessionStore,
   type SavedLocalSession,
 } from "../lib/session";
+import { getGameStorage } from "../lib/useGameSessionState";
 
 export default function Home() {
   const [locale, setLocale] = useState<Locale>("ar");
@@ -34,7 +33,8 @@ export default function Home() {
   const [savedSession, setSavedSession] = useState<SavedLocalSession | null>(null);
 
   useEffect(() => {
-    const storedLocale = readStoredLocale(window.localStorage);
+    const storage = getGameStorage();
+    const storedLocale = readStoredLocale(storage ?? undefined);
     setLocale(storedLocale);
     syncDocumentLocale(storedLocale, document.documentElement);
     const invited = readInviteCode(window.location.search);
@@ -42,13 +42,21 @@ export default function Home() {
       setMode("room");
       setInviteCode(invited);
     } else {
-      setSavedSession(parseSavedSession(window.localStorage.getItem(SESSION_KEY)));
+      setSavedSession(storage ? getSessionStore(storage).read() : null);
     }
+    const syncSession = () => setSavedSession(storage ? getSessionStore(storage).read() : null);
+    window.addEventListener("storage", syncSession);
+    const channel = typeof BroadcastChannel !== "undefined" ? new BroadcastChannel("bara-session") : null;
+    channel?.addEventListener("message", syncSession);
+    return () => {
+      window.removeEventListener("storage", syncSession);
+      channel?.close();
+    };
   }, []);
 
   function changeLocale(nextLocale: Locale) {
     setLocale(nextLocale);
-    writeStoredLocale(nextLocale, window.localStorage);
+    writeStoredLocale(nextLocale, getGameStorage() ?? undefined);
     syncDocumentLocale(nextLocale, document.documentElement);
   }
 
@@ -57,17 +65,14 @@ export default function Home() {
   function chooseGame(gameId: GameId) {
     setActiveGame(gameId);
     if (mode === "local") {
-      window.localStorage.setItem(SESSION_KEY, serializeSavedSession({
-        gameId,
-        locale,
-        updatedAt: Date.now(),
-        controller: {},
-      }));
+      const storage = getGameStorage();
+      if (storage) getSessionStore(storage).replace(gameId, locale);
     }
   }
 
   function startNew() {
-    discardSavedSession(window.localStorage);
+    const storage = getGameStorage();
+    if (storage) discardSavedSession(storage);
     setSavedSession(null);
   }
 

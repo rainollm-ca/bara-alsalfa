@@ -141,15 +141,42 @@ async function setLocale(page, locale) {
   );
 }
 
+async function returnToLibrary(page, locale) {
+  await page.getByRole("button", { name: locale.id === "ar" ? "المكتبة" : "Game library" }).click();
+  const newGame = page.locator(".resumeSession .ghostButton");
+  if (await newGame.isVisible().catch(() => false)) await newGame.click();
+  await page.locator(".gameAction").first().waitFor();
+}
+
 async function runOfflineQa(browser) {
   for (const locale of locales) {
+    const seedContext = await browser.newContext({ viewport: viewports[1], serviceWorkers: "block" });
+    const seedPage = await seedContext.newPage();
+    await seedPage.route("**/private-probe", (route) => route.fulfill({ status: 200, body: "private-response" }));
+    await seedPage.goto(baseUrl, { waitUntil: "domcontentloaded" });
+    assert.equal(await seedPage.evaluate(() => fetch("/private-probe").then((response) => response.text())), "private-response");
+    await seedContext.close();
+
     const context = await browser.newContext({ viewport: viewports[1], serviceWorkers: "allow" });
     const page = await context.newPage();
     await setLocale(page, locale);
     await page.evaluate(() => navigator.serviceWorker.ready);
     await page.reload({ waitUntil: "networkidle" });
+    await page.evaluate(async () => {
+      const foreign = await caches.open("foreign-poison");
+      await foreign.put("/private-probe", new Response("poison"));
+      const icon = await fetch("/icons/icon-192.png");
+      if (!icon.ok) throw new Error("static prime failed");
+    });
     await page.locator(".gameAction").nth(2).click();
     await page.locator(".setupShell").waitFor();
+    await page.waitForFunction(() => {
+      try {
+        return JSON.parse(localStorage.getItem("bara-local-session") ?? "null")?.gameId === "charades";
+      } catch {
+        return false;
+      }
+    });
 
     await context.setOffline(true);
     await page.reload({ waitUntil: "domcontentloaded" });
@@ -167,8 +194,22 @@ async function runOfflineQa(browser) {
       }
     });
     assert.equal(apiWasCached, false, `offline API must not be served from cache (${locale.id})`);
+    const privateWasCached = await page.evaluate(async () => {
+      try {
+        await fetch("/private-probe");
+        return true;
+      } catch {
+        return false;
+      }
+    });
+    assert.equal(privateWasCached, false, `foreign poison/private GET must not be served (${locale.id})`);
+    assert.equal(
+      await page.evaluate(() => fetch("/icons/icon-192.png").then((response) => response.ok)),
+      true,
+      `allowlisted static must be cached (${locale.id})`,
+    );
 
-    await page.getByRole("button", { name: locale.id === "ar" ? "المكتبة" : "Game library" }).click();
+    await returnToLibrary(page, locale);
     const discard = page.locator(".resumeSession .ghostButton");
     if (await discard.isVisible().catch(() => false)) await discard.click();
     await page.locator(".modeOption").nth(1).click();
@@ -196,6 +237,11 @@ async function reloadAndResume(page, label) {
 }
 
 async function forceController(page, patch) {
+  await page.waitForFunction(async () => {
+    const before = localStorage.getItem("bara-local-session");
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    return localStorage.getItem("bara-local-session") === before;
+  });
   await page.evaluate((next) => {
     const key = "bara-local-session";
     const saved = JSON.parse(localStorage.getItem(key));
@@ -219,9 +265,29 @@ async function runFullFlowQa(browser) {
     await page.locator(".challengeActions .primaryButton").click();
     await reloadAndResume(page, `category restored ${locale.id}`);
     await page.locator(".challengeBoard button").first().click();
+    await page.locator(".timerButton").click();
+    await page.evaluate(() => {
+      const key = "bara-local-session";
+      const saved = JSON.parse(localStorage.getItem(key));
+      saved.controller.categoryState.activeQuestion.timer = {
+        status: "running",
+        remainingMs: 100,
+        startedAt: Date.now() - 1_000,
+      };
+      localStorage.setItem(key, JSON.stringify(saved));
+    });
+    await reloadAndResume(page, `category elapsed timer ${locale.id}`);
+    await page.waitForFunction(() => document.querySelector(".timer")?.textContent?.includes("0"));
     await page.locator(".revealButton").click();
     await page.locator(".correctButton").first().click();
     await assertNoOverflow(page, `category question ${locale.id}`);
+    await page.waitForFunction(() => {
+      try {
+        return JSON.parse(localStorage.getItem("bara-local-session") ?? "null")?.controller?.categoryState?.activeQuestion === null;
+      } catch {
+        return false;
+      }
+    });
     await page.evaluate(() => {
       const key = "bara-local-session";
       const saved = JSON.parse(localStorage.getItem(key));
@@ -233,7 +299,7 @@ async function runFullFlowQa(browser) {
     assert.ok(await page.locator(".challengeResult").isVisible());
 
     // Out of the Loop: privacy-safe role restore and rendered voting result.
-    await page.getByRole("button", { name: locale.id === "ar" ? "المكتبة" : "Game library" }).click();
+    await returnToLibrary(page, locale);
     await page.locator(".gameAction").nth(1).click();
     await page.locator(".hero .primary").click();
     await addNames(page, ["One", "Two", "Three"]);
@@ -259,7 +325,7 @@ async function runFullFlowQa(browser) {
       { index: 3, id: "forbidden-word", turns: 4 },
       { index: 5, id: "rapid-fire", turns: 2 },
     ]) {
-      await page.getByRole("button", { name: locale.id === "ar" ? "المكتبة" : "Game library" }).click();
+      await returnToLibrary(page, locale);
       await page.locator(".gameAction").nth(game.index).click();
       await addNames(page, ["One", "Two"]);
       await page.locator(".setupShell .primary").click();
@@ -268,17 +334,18 @@ async function runFullFlowQa(browser) {
       assert.ok(await page.locator(".actionGame").isVisible());
       for (let turn = 0; turn < game.turns; turn += 1) {
         await forceController(page, {
-          expired: true,
-          timer: { status: "expired", remainingMs: 0, startedAt: null },
+          expired: false,
+          timer: { status: "running", remainingMs: 100, startedAt: Date.now() - 1_000 },
         });
         await reloadAndResume(page, `${game.id} expired turn ${turn + 1} ${locale.id}`);
+        await page.locator(".actionGame .primary").last().waitFor();
         await page.locator(".actionGame .primary").last().click();
       }
       assert.ok(await page.locator(".finalScores").isVisible());
     }
 
     // Who Am I: secret reveal always comes back covered.
-    await page.getByRole("button", { name: locale.id === "ar" ? "المكتبة" : "Game library" }).click();
+    await returnToLibrary(page, locale);
     await page.locator(".gameAction").nth(4).click();
     await addNames(page, ["One", "Two"]);
     await page.locator(".setupShell .primary").click();
@@ -299,7 +366,7 @@ async function runFullFlowQa(browser) {
     await assertNoOverflow(page, `who-am-i play ${locale.id}`);
 
     // Most Likely To: covered restore, then all private votes and result.
-    await page.getByRole("button", { name: locale.id === "ar" ? "المكتبة" : "Game library" }).click();
+    await returnToLibrary(page, locale);
     await page.locator(".gameAction").nth(6).click();
     await addNames(page, ["One", "Two", "Three"]);
     await page.locator(".setupShell .primary").click();
@@ -314,7 +381,7 @@ async function runFullFlowQa(browser) {
     assert.ok(await page.locator(".result").isVisible());
 
     // Two Truths: covered entry restore, secret entry, private voting, reveal.
-    await page.getByRole("button", { name: locale.id === "ar" ? "المكتبة" : "Game library" }).click();
+    await returnToLibrary(page, locale);
     await page.locator(".gameAction").nth(7).click();
     await addNames(page, ["One", "Two", "Three"]);
     await page.locator(".setupShell .primary").click();

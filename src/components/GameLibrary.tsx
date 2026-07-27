@@ -51,12 +51,21 @@ export function formatPlayerRange(
 }
 
 export function readStoredLocale(storage?: StorageReader): Locale {
-  const value = storage?.getItem(LOCALE_KEY);
-  return value === "en" || value === "ar" ? value : "ar";
+  try {
+    const value = storage?.getItem(LOCALE_KEY);
+    return value === "en" || value === "ar" ? value : "ar";
+  } catch {
+    return "ar";
+  }
 }
 
 export function writeStoredLocale(locale: Locale, storage?: StorageWriter) {
-  storage?.setItem(LOCALE_KEY, locale);
+  try {
+    storage?.setItem(LOCALE_KEY, locale);
+    return Boolean(storage);
+  } catch {
+    return false;
+  }
 }
 
 export function syncDocumentLocale(locale: Locale, root: DocumentRoot) {

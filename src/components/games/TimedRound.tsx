@@ -39,9 +39,14 @@ export function TimedRound({ seconds, locale, resetKey, onExpire, children, game
     status: "ready",
     remainingMs: seconds * 1_000,
     startedAt: null,
-  }, isTimerState, (value) => value.status === "running" && remainingAt(value, Date.now()) === 0
-    ? { status: "expired", remainingMs: 0, startedAt: null }
-    : value);
+  }, isTimerState, (value) => {
+    if (value.status !== "running") return value;
+    return {
+      status: "running",
+      remainingMs: remainingAt(value, Date.now()),
+      startedAt: Date.now(),
+    };
+  });
   const [now, setNow] = useState(() => Date.now());
   const expiredRef = useRef(false);
   const previousResetKey = useRef(resetKey);

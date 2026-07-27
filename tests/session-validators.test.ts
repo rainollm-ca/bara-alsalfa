@@ -6,6 +6,9 @@ import {
   isPromptDrawState,
   isStringList,
   isWhoAmIController,
+  isMostLikelyController,
+  isTimedGameController,
+  isTwoTruthsController,
 } from "../src/lib/useGameSessionState";
 
 describe("restored controller data guards", () => {
@@ -35,6 +38,38 @@ describe("restored controller data guards", () => {
   ])("totally rejects malformed field payload %#", (guard, payload) => {
     expect(() => guard(payload)).not.toThrow();
     expect(guard(payload)).toBe(false);
+  });
+});
+
+describe("phase-specific controller relationships", () => {
+  it.each([
+    [{ phase: "pass", players: ["A", "B", "C"], voter: 1, votes: [], choice: "" }],
+    [{ phase: "result", players: ["A", "B", "C"], voter: 2, votes: ["A"], choice: "" }],
+    [{ phase: "vote", players: ["A", "B", "C"], voter: 0, votes: ["Z"], choice: "" }],
+  ])("rejects mismatched Most Likely voting state", (controller) => {
+    expect(isMostLikelyController(controller)).toBe(false);
+  });
+
+  it.each([
+    [{ phase: "entry", players: ["A", "B", "C"], storyteller: 4, statements: ["a", "b", "c"], lie: 0 }],
+    [{ phase: "vote", players: ["A", "B", "C"], storyteller: 0, statements: ["a", "b", "c"], lie: 0, round: null, voters: ["B", "C"], voter: 0, votes: [] }],
+    [{ phase: "reveal", players: ["A", "B", "C"], storyteller: 0, statements: ["a", "b", "c"], lie: 0, round: { playerId: "A", statements: ["a", "b", "c"], lieIndex: 0, revealed: false }, voters: ["C", "B"], voter: 1, votes: [0, 1] }],
+  ])("rejects mismatched Two Truths state", (controller) => {
+    expect(isTwoTruthsController(controller)).toBe(false);
+  });
+
+  it("rejects team/score/turn/deck/timer incoherence", () => {
+    const prompt = { id: "p", text: { ar: "س", en: "Q" } };
+    const base = {
+      screen: "round", teams: ["A", "B"], scores: { A: 0, B: 0 }, turn: 0,
+      drawState: { prompt, deck: { remaining: [] } }, expired: false,
+      timer: { status: "running", remainingMs: 100, startedAt: Date.now() },
+    };
+    expect(isTimedGameController("charades", { ...base, scores: { A: 0, C: 0 } })).toBe(false);
+    expect(isTimedGameController("charades", { ...base, turn: 99 })).toBe(false);
+    expect(isTimedGameController("charades", { ...base, drawState: { prompt, deck: { remaining: [prompt] } } })).toBe(false);
+    expect(isTimedGameController("charades", { ...base, expired: true })).toBe(false);
+    expect(isTimedGameController("charades", { ...base, timer: { status: "running", remainingMs: Number.NaN, startedAt: Date.now() } })).toBe(false);
   });
 });
 
