@@ -1,15 +1,15 @@
 import type { LocalizedText } from "../types";
 
 export type CategoryChallengeQuestion = {
-  id: string;
-  question: LocalizedText;
-  answer: LocalizedText;
+  readonly id: string;
+  readonly question: Readonly<LocalizedText>;
+  readonly answer: Readonly<LocalizedText>;
 };
 
 export type CategoryChallengeCategory = {
-  id: string;
-  title: LocalizedText;
-  questions: CategoryChallengeQuestion[];
+  readonly id: string;
+  readonly title: Readonly<LocalizedText>;
+  readonly questions: readonly CategoryChallengeQuestion[];
 };
 
 type QuestionSeed = [questionAr: string, questionEn: string, answerAr: string, answerEn: string];
@@ -17,7 +17,7 @@ type QuestionSeed = [questionAr: string, questionEn: string, answerAr: string, a
 const makeQuestions = (
   categoryId: string,
   seeds: QuestionSeed[],
-): CategoryChallengeQuestion[] =>
+): readonly CategoryChallengeQuestion[] =>
   seeds.map(([questionAr, questionEn, answerAr, answerEn], index) => ({
     id: `${categoryId}-${String(index + 1).padStart(2, "0")}`,
     question: { ar: questionAr, en: questionEn },
@@ -35,7 +35,7 @@ const category = (
   questions: makeQuestions(id, seeds),
 });
 
-export const CATEGORY_CHALLENGE_CATEGORIES: CategoryChallengeCategory[] = [
+export const CATEGORY_CHALLENGE_CATEGORIES: readonly CategoryChallengeCategory[] = [
   category("world-geography", "جغرافيا العالم", "World Geography", [
     ["ما عاصمة اليابان؟", "What is the capital of Japan?", "طوكيو", "Tokyo"],
     ["ما أطول نهر في أمريكا الجنوبية؟", "What is the longest river in South America?", "نهر الأمازون", "The Amazon River"],
@@ -76,7 +76,7 @@ export const CATEGORY_CHALLENGE_CATEGORIES: CategoryChallengeCategory[] = [
     ["كم لاعباً في فريق كرة القدم داخل الملعب؟", "How many players does a soccer team field?", "أحد عشر", "Eleven"],
     ["في أي رياضة تستخدم الريشة؟", "Which sport uses a shuttlecock?", "الريشة الطائرة", "Badminton"],
     ["كم حلقة في الشعار الأولمبي؟", "How many rings are in the Olympic symbol?", "خمس", "Five"],
-    ["ما الرياضة التي تضم ضربة إرسال وسلة؟", "Which sport has serves and baskets?", "كرة السلة", "Basketball"],
+    ["كم لاعباً من كل فريق في ملعب كرة السلة؟", "How many players from each team are on a basketball court?", "خمسة", "Five"],
     ["أي بلد استضاف كأس العالم 2022؟", "Which country hosted the 2022 World Cup?", "قطر", "Qatar"],
     ["كم نقطة تساوي الركلة الحرة في كرة السلة؟", "How many points is a basketball free throw worth?", "نقطة واحدة", "One point"],
     ["ما سطح بطولة ويمبلدون؟", "What surface is Wimbledon played on?", "العشب", "Grass"],

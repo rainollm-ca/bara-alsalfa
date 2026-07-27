@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, expectTypeOf, it } from "vitest";
 
 import { CATEGORY_CHALLENGE_CATEGORIES } from "../src/games/content/categoryChallenge";
 import {
@@ -72,6 +72,33 @@ describe("buildBoard", () => {
       expect(secondIds.some((id) => firstIds.includes(id))).toBe(false);
     }
   });
+
+  it("isolates board values from the exported question bank and future boards", () => {
+    const first = buildBoard(selectedCategoryIds, () => 0);
+    const sourceCategory = CATEGORY_CHALLENGE_CATEGORIES.find(
+      ({ id }) => id === first.categories[0].categoryId,
+    )!;
+    const sourceQuestion = sourceCategory.questions.find(
+      ({ id }) => id === first.categories[0].questions[0].question.id,
+    )!;
+
+    expect(first.categories[0].title).not.toBe(sourceCategory.title);
+    expect(first.categories[0].questions[0].question).not.toBe(sourceQuestion);
+
+    const originalTitle = sourceCategory.title.en;
+    const originalQuestion = sourceQuestion.question.en;
+    (
+      first.categories[0].title as { en: string }
+    ).en = "corrupted board title";
+    (
+      first.categories[0].questions[0].question.question as { en: string }
+    ).en = "corrupted board question";
+
+    const second = buildBoard(selectedCategoryIds, () => 0);
+    expect(sourceCategory.title.en).toBe(originalTitle);
+    expect(sourceQuestion.question.en).toBe(originalQuestion);
+    expect(second.categories[0].title.en).toBe(originalTitle);
+  });
 });
 
 describe("immutable game updates", () => {
@@ -88,10 +115,13 @@ describe("immutable game updates", () => {
   });
 
   it("adjusts a team score without mutating the previous scores", () => {
-    const scores = { teamOne: 300, teamTwo: 500 };
+    const scores = { teamOne: 300, teamTwo: 500 } as const;
 
     const updated = adjustTeamScore(scores, "teamOne", 200);
 
+    expectTypeOf(updated).toEqualTypeOf<
+      Readonly<Record<"teamOne" | "teamTwo", number>>
+    >();
     expect(updated).toEqual({ teamOne: 500, teamTwo: 500 });
     expect(updated).not.toBe(scores);
     expect(scores).toEqual({ teamOne: 300, teamTwo: 500 });

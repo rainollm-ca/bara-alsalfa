@@ -6,23 +6,26 @@ import {
 export const CATEGORY_CHALLENGE_POINTS = [100, 200, 300, 400, 500] as const;
 
 export type BoardQuestion = {
-  points: (typeof CATEGORY_CHALLENGE_POINTS)[number];
-  question: CategoryChallengeQuestion;
-  answered: boolean;
+  readonly points: (typeof CATEGORY_CHALLENGE_POINTS)[number];
+  readonly question: CategoryChallengeQuestion;
+  readonly answered: boolean;
 };
 
 export type BoardCategory = {
-  categoryId: string;
-  title: { ar: string; en: string };
-  questions: BoardQuestion[];
+  readonly categoryId: string;
+  readonly title: Readonly<{ ar: string; en: string }>;
+  readonly questions: readonly BoardQuestion[];
 };
 
 export type CategoryChallengeBoard = {
-  categories: BoardCategory[];
-  usedQuestionIds: ReadonlySet<string>;
+  readonly categories: readonly BoardCategory[];
+  readonly usedQuestionIds: ReadonlySet<string>;
 };
 
 export type TeamScores = Readonly<Record<string, number>>;
+export type WidenedTeamScores<S extends TeamScores> = {
+  readonly [TeamId in keyof S]: number;
+};
 
 const shuffled = <T>(items: readonly T[], random: () => number): T[] => {
   const copy = [...items];
@@ -57,12 +60,16 @@ export function buildBoard(
 
     return {
       categoryId,
-      title: source.title,
+      title: { ...source.title },
       questions: shuffled(available, random)
         .slice(0, CATEGORY_CHALLENGE_POINTS.length)
         .map((question, index) => ({
           points: CATEGORY_CHALLENGE_POINTS[index],
-          question,
+          question: {
+            ...question,
+            question: { ...question.question },
+            answer: { ...question.answer },
+          },
           answered: false,
         })),
     };
@@ -98,10 +105,10 @@ export function answerQuestion(
   };
 }
 
-export function adjustTeamScore<T extends TeamScores>(
-  scores: T,
-  teamId: keyof T,
+export function adjustTeamScore<S extends TeamScores>(
+  scores: S,
+  teamId: keyof S,
   adjustment: number,
-): T {
+): WidenedTeamScores<S> {
   return { ...scores, [teamId]: scores[teamId] + adjustment };
 }
