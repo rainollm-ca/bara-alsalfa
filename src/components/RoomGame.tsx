@@ -49,7 +49,9 @@ export function RoomGame({ locale, room, session, api, onState }: Props) {
     setBusy(true);
     setError("");
     try {
-      const token = hostGames.has(room.selectedGame ?? "") ? session.hostToken : session.playerToken;
+      const requiresHost = hostGames.has(room.selectedGame ?? "") ||
+        ["game/next-round", "game/return-lobby", "out-of-loop/open-vote"].includes(action.type);
+      const token = requiresHost ? session.hostToken : session.playerToken;
       if (!token) throw new Error("Host credentials are required.");
       onState((await api.action(room.code, token, action)).room);
     } catch (reason) {
@@ -81,22 +83,22 @@ export function RoomGame({ locale, room, session, api, onState }: Props) {
 
       {state.phase === "vote" && (room.selectedGame === "out-of-loop" || room.selectedGame === "most-likely-to") && !secret.voted && (
         <div className="roomVoteGrid">{room.players.map((player) =>
-          <button disabled={busy} key={player.id} onClick={() => act({
+          <button data-action="vote-player" data-player-id={player.id} disabled={busy} key={player.id} onClick={() => act({
             type: room.selectedGame === "out-of-loop" ? "out-of-loop/vote" : "most-likely/vote",
             playerId: player.id,
           })}>{t.vote}: {player.name}</button>)}</div>
       )}
       {room.selectedGame === "out-of-loop" && state.phase === "discussion" && room.self.isHost && (
-        <button className="primaryButton" disabled={busy} onClick={() => act({ type: "out-of-loop/open-vote" })}>{t.openVote}</button>
+        <button data-action="open-vote" className="primaryButton" disabled={busy} onClick={() => act({ type: "out-of-loop/open-vote" })}>{t.openVote}</button>
       )}
       {room.selectedGame === "out-of-loop" && state.phase === "outsider-guess" && secret.role === "outsider" && (
         <div className="truthForm"><input aria-label={t.guess} maxLength={80} value={guess} onChange={(event) => setGuess(event.target.value)} />
-          <button disabled={busy || !guess.trim()} onClick={() => act({ type: "out-of-loop/guess", word: guess })}>{t.guess}</button></div>
+          <button data-action="outsider-guess" disabled={busy || !guess.trim()} onClick={() => act({ type: "out-of-loop/guess", word: guess })}>{t.guess}</button></div>
       )}
       {room.selectedGame === "who-am-i" && state.phase === "play" && state.turnPlayerId === room.self.id && (
         <div className="roomActionRow">
-          <button disabled={busy} onClick={() => act({ type: "who-am-i/guess", correct: true })}>{t.correct}</button>
-          <button disabled={busy} onClick={() => act({ type: "who-am-i/guess", correct: false })}>{t.skip}</button>
+          <button data-action="correct" disabled={busy} onClick={() => act({ type: "who-am-i/guess", correct: true })}>{t.correct}</button>
+          <button data-action="skip" disabled={busy} onClick={() => act({ type: "who-am-i/guess", correct: false })}>{t.skip}</button>
         </div>
       )}
       {room.selectedGame === "two-truths-lie" && state.phase === "submit" && state.turnPlayerId === room.self.id && (
@@ -105,25 +107,25 @@ export function RoomGame({ locale, room, session, api, onState }: Props) {
           <select aria-label={t.lie} value={lieIndex} onChange={(event) => setLieIndex(Number(event.target.value))}>
             {[0, 1, 2].map((index) => <option value={index} key={index}>{index + 1}</option>)}
           </select>
-          <button disabled={busy || statements.some((value) => !value.trim())} onClick={() => act({ type: "two-truths/submit", statements: statements as [string, string, string], lieIndex: lieIndex as 0 | 1 | 2 })}>{t.submit}</button>
+          <button data-action="submit-statements" disabled={busy || statements.some((value) => !value.trim())} onClick={() => act({ type: "two-truths/submit", statements: statements as [string, string, string], lieIndex: lieIndex as 0 | 1 | 2 })}>{t.submit}</button>
         </div>
       )}
       {room.selectedGame === "two-truths-lie" && state.phase === "vote" && state.turnPlayerId !== room.self.id && !secret.voted && (
         <div className="roomVoteGrid">{state.statements.map((statement: string, index: number) =>
-          <button disabled={busy} key={index} onClick={() => act({ type: "two-truths/vote", index: index as 0 | 1 | 2 })}>{t.vote}: {statement}</button>)}</div>
+          <button data-action="vote-statement" data-statement-index={index} disabled={busy} key={index} onClick={() => act({ type: "two-truths/vote", index: index as 0 | 1 | 2 })}>{t.vote}: {statement}</button>)}</div>
       )}
 
       {hostGames.has(room.selectedGame ?? "") && room.self.isHost && state.phase === "play" && (
         <div className="roomActionRow">
           {room.selectedGame === "category-challenge" ? room.players.map((player) =>
-            <button disabled={busy} key={player.id} onClick={() => act({ type: "category/score", correctPlayerId: player.id })}>{t.correct}: {player.name}</button>) :
-            <button disabled={busy} onClick={() => act({ type: `${room.selectedGame}/mark` as "charades/mark", outcome: "correct" })}>{t.correct}</button>}
-          <button disabled={busy} onClick={() => act(room.selectedGame === "category-challenge"
+            <button data-action="correct-player" data-player-id={player.id} disabled={busy} key={player.id} onClick={() => act({ type: "category/score", correctPlayerId: player.id })}>{t.correct}: {player.name}</button>) :
+            <button data-action="correct" disabled={busy} onClick={() => act({ type: `${room.selectedGame}/mark` as "charades/mark", outcome: "correct" })}>{t.correct}</button>}
+          <button data-action="skip" disabled={busy} onClick={() => act(room.selectedGame === "category-challenge"
             ? { type: "category/score", correctPlayerId: null }
             : { type: `${room.selectedGame}/mark` as "charades/mark", outcome: "skip" })}>{t.skip}</button>
-          {room.selectedGame === "charades" && <button disabled={busy} onClick={() => act({ type: "charades/mark", outcome: "failed" })}>{t.failed}</button>}
-          {room.selectedGame === "forbidden-word" && <button disabled={busy} onClick={() => act({ type: "forbidden-word/mark", outcome: "violation" })}>{t.violation}</button>}
-          {room.selectedGame !== "category-challenge" && <button disabled={busy} onClick={() => act({ type: "timed/expire" })}>{t.expire}</button>}
+          {room.selectedGame === "charades" && <button data-action="failed" disabled={busy} onClick={() => act({ type: "charades/mark", outcome: "failed" })}>{t.failed}</button>}
+          {room.selectedGame === "forbidden-word" && <button data-action="violation" disabled={busy} onClick={() => act({ type: "forbidden-word/mark", outcome: "violation" })}>{t.violation}</button>}
+          {room.selectedGame !== "category-challenge" && <button data-action="expire" disabled={busy} onClick={() => act({ type: "timed/expire" })}>{t.expire}</button>}
         </div>
       )}
       {state.phase === "result" && <div className="roomResult" aria-live="polite">
@@ -140,8 +142,8 @@ export function RoomGame({ locale, room, session, api, onState }: Props) {
           {state.summary.violations ? ` · ${t.violation}: ${state.summary.violations}` : ""}
         </p>}
         {room.self.isHost && <div className="roomActionRow">
-          <button disabled={busy} onClick={() => act({ type: "game/next-round" })}>{t.next}</button>
-          <button disabled={busy} onClick={() => act({ type: "game/return-lobby" })}>{t.lobby}</button>
+          <button data-action="next-round" disabled={busy} onClick={() => act({ type: "game/next-round" })}>{t.next}</button>
+          <button data-action="return-lobby" disabled={busy} onClick={() => act({ type: "game/return-lobby" })}>{t.lobby}</button>
         </div>}
       </div>}
       {scores && <div className="roomScores">{room.players.map((player) => <span key={player.id}>{player.name}: <b>{scores[player.id] ?? 0}</b></span>)}</div>}

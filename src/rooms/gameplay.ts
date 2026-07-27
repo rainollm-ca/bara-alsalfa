@@ -16,7 +16,7 @@ const scores = (room: Room) =>
 const localized = (value: { ar: string; en: string }) => ({ ar: value.ar, en: value.en });
 
 function timedDuration() {
-  const configured = Number(process.env.ROOM_TIMED_ROUND_MS ?? 60_000);
+  const configured = Number(process.env.ROOM_ROUND_DURATION_MS ?? 60_000);
   return Number.isInteger(configured) && configured >= 100 && configured <= 120_000
     ? configured : 60_000;
 }

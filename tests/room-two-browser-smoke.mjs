@@ -25,7 +25,7 @@ async function waitForServer() {
 async function startServer() {
   server = spawn("npm", ["start"], {
     cwd: process.cwd(),
-    env: { ...process.env, PORT: port, ROOM_DB_PATH: dbPath, ROOM_CREATE_LIMIT: "20", ROOM_TIMED_ROUND_MS: "300" },
+    env: { ...process.env, PORT: port, ROOM_DB_PATH: dbPath, ROOM_CREATE_LIMIT: "20", ROOM_ROUND_DURATION_MS: "300" },
     stdio: ["ignore", "pipe", "pipe"],
   });
   await waitForServer();
@@ -118,6 +118,103 @@ try {
     };
   });
   if (Object.values(privacy).some((value) => !value)) throw new Error("Out of Loop privacy projection failed.");
+  const uiDefinitions = [
+    ["charades", "Charades", 4],
+    ["forbidden-word", "Forbidden Word", 4],
+    ["rapid-fire", "Rapid Fire", 2],
+    ["who-am-i", "Who Am I?", 2],
+    ["most-likely-to", "Most Likely To", 3],
+    ["out-of-loop", "Out of the Loop", 3],
+    ["two-truths-lie", "Two Truths and a Lie", 3],
+  ];
+  const uiJourneys = {
+    "category-challenge": { uiJourney: true, synchronized: true, nextRound: 2 },
+  };
+  await host.locator('[data-action="next-round"]').click();
+  await host.getByText("Round 2", { exact: true }).waitFor();
+  await guest.getByText("Round 2", { exact: true }).waitFor({ timeout: 6_000 });
+
+  for (const [gameId, title, playerCount] of uiDefinitions) {
+    const contexts = [];
+    const pages = [];
+    for (let index = 0; index < playerCount; index += 1) {
+      const context = await browser.newContext();
+      contexts.push(context);
+      pages.push(await context.newPage());
+    }
+    const journeyHost = pages[0];
+    await journeyHost.goto(baseUrl);
+    await journeyHost.getByRole("button", { name: "EN" }).click();
+    await journeyHost.getByRole("button", { name: /Group room/ }).click();
+    await journeyHost.locator(".gameTile").filter({ hasText: title }).getByRole("button", { name: "Play now" }).click();
+    await journeyHost.getByLabel("Your name").fill(`${title} Host`);
+    await journeyHost.getByRole("button", { name: "Create room" }).click();
+    await journeyHost.locator(".roomCode").waitFor();
+    const journeyUrl = journeyHost.url();
+
+    for (let index = 1; index < playerCount; index += 1) {
+      const page = pages[index];
+      await page.goto(journeyUrl);
+      await page.getByRole("button", { name: "EN" }).click();
+      await page.getByLabel("Your name").fill(`${title} P${index}`);
+      await page.getByRole("button", { name: "Join room" }).click();
+    }
+    await journeyHost.getByText(`${title} P${playerCount - 1}`).waitFor({ timeout: 8_000 });
+    await journeyHost.getByRole("button", { name: "Start game" }).click();
+    for (const page of pages) {
+      await page.locator(`[data-game-id="${gameId}"]`).waitFor({ timeout: 8_000 });
+    }
+
+    if (["charades", "forbidden-word", "rapid-fire"].includes(gameId)) {
+      const prompt = (await journeyHost.locator(".roomGameBoard > h1").innerText()).trim();
+      if (!prompt || (await pages[1].locator("body").innerText()).includes(prompt)) {
+        throw new Error(`${gameId} active prompt leaked to a non-actor UI.`);
+      }
+      await journeyHost.locator('[data-action="correct"]').click();
+      await journeyHost.locator('[data-action="skip"]').click();
+      await new Promise((resolve) => setTimeout(resolve, 350));
+      await journeyHost.locator('[data-action="expire"]').click();
+    } else if (gameId === "who-am-i") {
+      const hostIdentities = await journeyHost.locator("section.roomGameBoard").innerText();
+      const guestIdentities = await pages[1].locator("section.roomGameBoard").innerText();
+      if (hostIdentities === guestIdentities) throw new Error("Who Am I private identity projections were identical.");
+      await journeyHost.locator('[data-action="correct"]').click();
+    } else if (gameId === "most-likely-to") {
+      for (const page of pages) {
+        await page.locator('[data-action="vote-player"]').first().click();
+      }
+    } else if (gameId === "out-of-loop") {
+      const outsiderPage = pages.at(-1);
+      if ((await outsiderPage.locator("body").innerText()).includes("Damascus") ||
+          !(await journeyHost.locator("body").innerText()).includes("Damascus")) {
+        throw new Error("Out of Loop secret word privacy failed in rendered UI.");
+      }
+      await journeyHost.locator('[data-action="open-vote"]').click();
+      for (const page of pages) {
+        await page.locator('[data-action="vote-player"]').last().click();
+      }
+      await outsiderPage.getByLabel("Guess the word").fill("Damascus");
+      await outsiderPage.locator('[data-action="outsider-guess"]').click();
+    } else {
+      await journeyHost.getByLabel("Statement 1").fill("One");
+      await journeyHost.getByLabel("Statement 2").fill("Two");
+      await journeyHost.getByLabel("Statement 3").fill("Three");
+      await journeyHost.locator('[data-action="submit-statements"]').click();
+      for (const page of pages.slice(1)) {
+        await page.locator('[data-action="vote-statement"]').first().click();
+      }
+    }
+
+    for (const page of pages) {
+      await page.locator(`[data-game-id="${gameId}"][data-game-phase="result"]`).waitFor({ timeout: 8_000 });
+    }
+    await journeyHost.locator('[data-action="next-round"]').click();
+    for (const page of pages) {
+      await page.getByText("Round 2", { exact: true }).waitFor({ timeout: 8_000 });
+    }
+    uiJourneys[gameId] = { uiJourney: true, synchronized: true, nextRound: 2 };
+    for (const context of contexts) await context.close();
+  }
   const reducerMatrix = await host.evaluate(async () => {
     const postRaw = (path, body, token) => fetch(path, {
       method: "POST",
@@ -196,6 +293,7 @@ try {
     synchronizedPlayers: 2,
     synchronizedStatus: "round-result",
     authoritativeCategoryRound: true,
+    allGameUiJourneys: uiJourneys,
     outOfLoopPrivacy: privacy,
     allGameRoundMatrix: reducerMatrix,
     inviteUrlRoutedAtRoot: true,
