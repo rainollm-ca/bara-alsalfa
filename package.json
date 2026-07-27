@@ -7,6 +7,7 @@
     "start": "next start",
     "smoke:rooms": "node tests/room-two-browser-smoke.mjs",
     "test:mobile": "node tests/mobile-qa.mjs",
+    "test:full-flow": "node tests/mobile-qa.mjs",
     "build": "next build",
     "lint": "next lint",
     "test": "vitest run"

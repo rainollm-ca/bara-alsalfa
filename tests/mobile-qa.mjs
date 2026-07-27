@@ -116,6 +116,14 @@ async function assertMobilePage(page, locale, label) {
   );
 }
 
+async function assertNoOverflow(page, label) {
+  const size = await page.locator("html").evaluate((root) => ({
+    scrollWidth: root.scrollWidth,
+    clientWidth: root.clientWidth,
+  }));
+  assert.ok(size.scrollWidth <= size.clientWidth, `${label}: horizontal overflow`);
+}
+
 async function setLocale(page, locale) {
   await page.goto(baseUrl, { waitUntil: "networkidle" });
   const newGame = page.locator(".resumeSession .ghostButton");
@@ -165,6 +173,150 @@ async function runOfflineQa(browser) {
     await page.locator(".gameAction").first().click();
     await page.waitForFunction(() => !navigator.onLine);
     await expectText(page.locator(".pwaStatus"), locale.id === "ar" ? "الغرف تحتاج اتصالاً" : "Rooms need a connection");
+    await context.close();
+  }
+}
+
+async function addNames(page, names) {
+  for (const name of names) {
+    await page.locator(".addRow input").fill(name);
+    await page.locator('.addRow button[data-action="primary"]').click();
+  }
+}
+
+async function reloadAndResume(page, label) {
+  await page.waitForTimeout(80);
+  await page.reload({ waitUntil: "networkidle" });
+  const resume = page.locator(".resumeSession .primaryButton");
+  await resume.waitFor();
+  await resume.click();
+  await assertNoOverflow(page, label);
+}
+
+async function forceController(page, patch) {
+  await page.evaluate((next) => {
+    const key = "bara-local-session";
+    const saved = JSON.parse(localStorage.getItem(key));
+    saved.controller = { ...saved.controller, ...next };
+    saved.updatedAt = Date.now();
+    localStorage.setItem(key, JSON.stringify(saved));
+  }, patch);
+}
+
+async function runFullFlowQa(browser) {
+  for (const locale of locales) {
+    const context = await browser.newContext({ viewport: viewports[1] });
+    const page = await context.newPage();
+
+    // Category Challenge: setup -> board -> restored board -> result.
+    await setLocale(page, locale);
+    await page.locator(".gameAction").nth(0).click();
+    await page.locator(".challengeCategories button").evaluateAll((buttons) => buttons.slice(0, 6).forEach((button) => button.click()));
+    await page.locator(".teamNameField input").nth(0).fill("One");
+    await page.locator(".teamNameField input").nth(1).fill("Two");
+    await page.locator(".challengeActions .primaryButton").click();
+    await reloadAndResume(page, `category restored ${locale.id}`);
+    await page.locator(".challengeBoard button").first().click();
+    await page.locator(".revealButton").click();
+    await page.locator(".correctButton").first().click();
+    await assertNoOverflow(page, `category question ${locale.id}`);
+    await page.evaluate(() => {
+      const key = "bara-local-session";
+      const saved = JSON.parse(localStorage.getItem(key));
+      saved.controller.categoryState.usedQuestionIds = saved.controller.board.categories.flatMap((category) => category.questions.map((entry) => entry.question.id));
+      saved.controller.categoryState.activeQuestion = null;
+      localStorage.setItem(key, JSON.stringify(saved));
+    });
+    await reloadAndResume(page, `category result ${locale.id}`);
+    assert.ok(await page.locator(".challengeResult").isVisible());
+
+    // Out of the Loop: privacy-safe role restore and rendered voting result.
+    await page.getByRole("button", { name: locale.id === "ar" ? "المكتبة" : "Game library" }).click();
+    await page.locator(".gameAction").nth(1).click();
+    await page.locator(".hero .primary").click();
+    await addNames(page, ["One", "Two", "Three"]);
+    await page.locator(".setupShell .primary").click();
+    await reloadAndResume(page, `out-of-loop covered ${locale.id}`);
+    assert.ok(await page.locator(".secretCard:not(.shown)").isVisible());
+    for (let index = 0; index < 3; index += 1) {
+      await page.locator(".secretCard").click();
+      await page.locator(".reveal .primary").click();
+    }
+    await page.locator(".play .primary").click();
+    for (let index = 0; index < 3; index += 1) {
+      await page.locator(".reveal .primary").click();
+      await page.locator(".suspects button").first().click();
+      await page.locator(".play .primary").click();
+    }
+    assert.ok(await page.locator(".result").isVisible());
+    await assertNoOverflow(page, `out-of-loop result ${locale.id}`);
+
+    // Timed action games: start a real round, restore it, then restore their final controller.
+    for (const game of [
+      { index: 2, id: "charades" },
+      { index: 3, id: "forbidden-word" },
+      { index: 5, id: "rapid-fire" },
+    ]) {
+      await page.getByRole("button", { name: locale.id === "ar" ? "المكتبة" : "Game library" }).click();
+      await page.locator(".gameAction").nth(game.index).click();
+      await addNames(page, ["One", "Two"]);
+      await page.locator(".setupShell .primary").click();
+      await page.locator(".timedRound .primary").click();
+      await reloadAndResume(page, `${game.id} round ${locale.id}`);
+      assert.ok(await page.locator(".actionGame").isVisible());
+      await forceController(page, { screen: "final", scores: { One: 1, Two: 0 } });
+      await reloadAndResume(page, `${game.id} result ${locale.id}`);
+      assert.ok(await page.locator(".finalScores").isVisible());
+    }
+
+    // Who Am I: secret reveal always comes back covered.
+    await page.getByRole("button", { name: locale.id === "ar" ? "المكتبة" : "Game library" }).click();
+    await page.locator(".gameAction").nth(4).click();
+    await addNames(page, ["One", "Two"]);
+    await page.locator(".setupShell .primary").click();
+    await page.locator(".secretCard").click();
+    await reloadAndResume(page, `who-am-i covered ${locale.id}`);
+    assert.ok(await page.locator(".secretCard").isVisible());
+    await assertNoOverflow(page, `who-am-i restore ${locale.id}`);
+
+    // Most Likely To: covered restore, then all private votes and result.
+    await page.getByRole("button", { name: locale.id === "ar" ? "المكتبة" : "Game library" }).click();
+    await page.locator(".gameAction").nth(6).click();
+    await addNames(page, ["One", "Two", "Three"]);
+    await page.locator(".setupShell .primary").click();
+    await page.locator(".reveal .primary").click();
+    await reloadAndResume(page, `most-likely covered ${locale.id}`);
+    assert.ok(await page.locator(".reveal .primary").isVisible());
+    for (let index = 0; index < 3; index += 1) {
+      await page.locator(".reveal .primary").click();
+      await page.locator(".suspects button").first().click();
+      await page.locator(".play>.primary, .play>div>.primary").last().click();
+    }
+    assert.ok(await page.locator(".result").isVisible());
+
+    // Two Truths: covered entry restore, secret entry, private voting, reveal.
+    await page.getByRole("button", { name: locale.id === "ar" ? "المكتبة" : "Game library" }).click();
+    await page.locator(".gameAction").nth(7).click();
+    await addNames(page, ["One", "Two", "Three"]);
+    await page.locator(".setupShell .primary").click();
+    await page.locator(".reveal .primary").click();
+    await reloadAndResume(page, `two-truths covered ${locale.id}`);
+    assert.ok(await page.locator(".reveal .primary").isVisible());
+    await page.locator(".reveal .primary").click();
+    const statements = page.locator('.play>div input:not([type="radio"])');
+    await statements.nth(0).fill("Alpha");
+    await statements.nth(1).fill("Beta");
+    await statements.nth(2).fill("Gamma");
+    await page.locator(".play>div>.primary").click();
+    for (let index = 0; index < 2; index += 1) {
+      await page.locator(".reveal .primary").click();
+      await page.locator(".suspects button").first().click();
+      await page.locator(".play>div>.primary").click();
+    }
+    await page.locator(".result .primary").click();
+    assert.ok(await page.locator(".result h2").isVisible());
+    await assertNoOverflow(page, `two-truths result ${locale.id}`);
+
     await context.close();
   }
 }
@@ -323,6 +475,7 @@ try {
     await runMobileMatrix(browser);
     for (const locale of locales) await captureCategoryBoard(browser, locale);
     await runOfflineQa(browser);
+    await runFullFlowQa(browser);
   } finally {
     await browser.close();
   }

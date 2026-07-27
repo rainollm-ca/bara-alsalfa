@@ -7,15 +7,23 @@ import { createPromptDeck, drawPrompt, scoreRapidFire, type PromptDeck } from ".
 import type { Locale } from "../../lib/game";
 import { Final } from "./Charades";
 import { TimedRound } from "./TimedRound";
+import { isBoolean, isStringList, isSafeInteger, useGameSessionState } from "../../lib/useGameSessionState";
 
 type Props = { locale: Locale; roundSeconds?: number; roundsPerTeam?: number; prompts?: readonly ActionPrompt[]; random?: () => number };
 
 export function RapidFire({ locale, roundSeconds: initialSeconds = 60, roundsPerTeam = 1, prompts = RAPID_FIRE_PROMPTS, random = Math.random }: Props) {
-  const [teams, setTeams] = useState<string[]>([]), [name, setName] = useState(""), [seconds, setSeconds] = useState(initialSeconds);
-  const [screen, setScreen] = useState<"setup" | "round" | "final">("setup"), [turn, setTurn] = useState(0);
-  const [scores, setScores] = useState<Record<string, number>>({}), [correct, setCorrect] = useState(0), [passed, setPassed] = useState(0), [expired, setExpired] = useState(false);
-  const [drawState, setDrawState] = useState<{ prompt: ActionPrompt | null; deck: PromptDeck }>(
+  const [teams, setTeams] = useGameSessionState("rapid-fire", locale, "teams", [], isStringList), [name, setName] = useState("");
+  const [seconds, setSeconds] = useGameSessionState("rapid-fire", locale, "seconds", initialSeconds, isSafeInteger(30, 90));
+  const [screen, setScreen] = useGameSessionState<"setup" | "round" | "final">("rapid-fire", locale, "screen", "setup", (value): value is "setup" | "round" | "final" => ["setup", "round", "final"].includes(String(value)));
+  const [turn, setTurn] = useGameSessionState("rapid-fire", locale, "turn", 0, isSafeInteger(0, 31));
+  const scoresValidator = (value: unknown): value is Record<string, number> => typeof value === "object" && value !== null && !Array.isArray(value);
+  const [scores, setScores] = useGameSessionState("rapid-fire", locale, "scores", {}, scoresValidator);
+  const [correct, setCorrect] = useGameSessionState("rapid-fire", locale, "correct", 0, isSafeInteger(0, 1000));
+  const [passed, setPassed] = useGameSessionState("rapid-fire", locale, "passed", 0, isSafeInteger(0, 1000));
+  const [expired, setExpired] = useGameSessionState("rapid-fire", locale, "expired", false, isBoolean);
+  const [drawState, setDrawState] = useGameSessionState<{ prompt: ActionPrompt | null; deck: PromptDeck }>("rapid-fire", locale, "drawState",
     () => drawPrompt(createPromptDeck(prompts, random)),
+    (value): value is { prompt: ActionPrompt | null; deck: PromptDeck } => typeof value === "object" && value !== null && typeof (value as { deck?: unknown }).deck === "object",
   );
   const advanceRef = useRef<HTMLButtonElement>(null);
   const t = locale === "ar"
@@ -42,9 +50,9 @@ export function RapidFire({ locale, roundSeconds: initialSeconds = 60, roundsPer
     {!valid.valid && <p role="status" className="validationMessage">{valid.message}</p>}
     <button data-action="primary" className="primary" disabled={!valid.valid} onClick={() => { setScores(Object.fromEntries(teams.map((x) => [x, 0]))); setScreen("round"); }}>{t.start}</button>
   </SetupShell>;
-  if (screen === "final") return <Final title={t.finalTitle} scores={scores} winner={Object.entries(scores).sort((a,b) => b[1]-a[1])[0]?.[0]} wins={t.wins} />;
+  if (screen === "final") return <Final title={t.finalTitle} scores={scores} winner={Object.entries(scores).sort((a,b) => b[1]-a[1])[0]?.[0]} wins={t.wins} restart={locale === "ar" ? "لعبة جديدة" : "New game"} onRestart={() => { setTeams([]); setScores({}); setTurn(0); setScreen("setup"); }} />;
   return <section className="panel actionGame"><p className="roundBadge">{teams[turn % teams.length]}</p><h1 className="actionPrompt">{prompt ? prompt.text[locale] : t.exhausted}</h1>
-    <TimedRound locale={locale} seconds={seconds} resetKey={turn} onExpire={expire}>{(running) => <>
+    <TimedRound gameId="rapid-fire" locale={locale} seconds={seconds} resetKey={turn} onExpire={expire}>{(running) => <>
       <div className="roundActions"><button className="success" disabled={!running || !prompt} onClick={() => advancePrompt("correct")}>{t.correct}</button><button className="secondary" disabled={!running || !prompt} onClick={() => advancePrompt("pass")}>{t.pass}</button></div>
       <p className="roundSummary">{correct} {t.correctCount} · {passed} {t.passed}</p>
       {expired && <div className="roundEnd"><h2>{t.summary}</h2><button ref={advanceRef} className="primary" onClick={() => { if (turn + 1 >= totalTurns) setScreen("final"); else { setTurn(turn + 1); setCorrect(0); setPassed(0); setExpired(false); } }}>{turn + 1 >= totalTurns ? t.final : t.next}</button></div>}

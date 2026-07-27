@@ -6,22 +6,24 @@ import { CHARADES_PROMPTS, type ActionPrompt } from "../../games/content/actionG
 import { createPromptDeck, drawPrompt, scoreCharades, type PromptDeck } from "../../games/engines/actionGames";
 import type { Locale } from "../../lib/game";
 import { TimedRound } from "./TimedRound";
+import { isBoolean, isStringList, isSafeInteger, useGameSessionState } from "../../lib/useGameSessionState";
 
 type Props = { locale: Locale; roundSeconds?: number; roundsPerTeam?: number; prompts?: readonly ActionPrompt[]; random?: () => number };
 type Summary = { correct: number; skipped: number; failed: number };
 
 export function Charades({ locale, roundSeconds: initialSeconds = 60, roundsPerTeam = 2, prompts = CHARADES_PROMPTS, random = Math.random }: Props) {
-  const [teams, setTeams] = useState<string[]>([]);
+  const [teams, setTeams] = useGameSessionState("charades", locale, "teams", [], isStringList);
   const [name, setName] = useState("");
-  const [seconds, setSeconds] = useState(initialSeconds);
-  const [screen, setScreen] = useState<"setup" | "round" | "final">("setup");
-  const [turn, setTurn] = useState(0);
-  const [drawState, setDrawState] = useState<{ prompt: ActionPrompt | null; deck: PromptDeck }>(
+  const [seconds, setSeconds] = useGameSessionState("charades", locale, "seconds", initialSeconds, isSafeInteger(30, 90));
+  const [screen, setScreen] = useGameSessionState<"setup" | "round" | "final">("charades", locale, "screen", "setup", (value): value is "setup" | "round" | "final" => ["setup", "round", "final"].includes(String(value)));
+  const [turn, setTurn] = useGameSessionState("charades", locale, "turn", 0, isSafeInteger(0, 31));
+  const [drawState, setDrawState] = useGameSessionState<{ prompt: ActionPrompt | null; deck: PromptDeck }>("charades", locale, "drawState",
     () => drawPrompt(createPromptDeck(prompts, random)),
+    (value): value is { prompt: ActionPrompt | null; deck: PromptDeck } => typeof value === "object" && value !== null && typeof (value as { deck?: unknown }).deck === "object",
   );
-  const [scores, setScores] = useState<Record<string, number>>({});
-  const [summary, setSummary] = useState<Summary>({ correct: 0, skipped: 0, failed: 0 });
-  const [expired, setExpired] = useState(false);
+  const [scores, setScores] = useGameSessionState<Record<string, number>>("charades", locale, "scores", {}, (value): value is Record<string, number> => typeof value === "object" && value !== null && !Array.isArray(value));
+  const [summary, setSummary] = useGameSessionState<Summary>("charades", locale, "summary", { correct: 0, skipped: 0, failed: 0 }, (value): value is Summary => typeof value === "object" && value !== null && ["correct", "skipped", "failed"].every((key) => Number.isInteger((value as Record<string, unknown>)[key])));
+  const [expired, setExpired] = useGameSessionState("charades", locale, "expired", false, isBoolean);
   const advanceRef = useRef<HTMLButtonElement>(null);
   const t = locale === "ar"
     ? { setup: "جهّزوا التمثيل الصامت", team: "اسم الفريق", add: "أضف فريقاً", remove: "حذف", start: "ابدأوا التمثيل", turn: "دور", correct: "صحيح", skip: "تخطي", failed: "فشل", exhausted: "انتهت بطاقات التمثيل", next: "الفريق التالي", final: "شاهدوا النتيجة النهائية", finalTitle: "النتيجة النهائية", wins: "يفوز!", correctCount: "صحيحة", skipCount: "متخطاة", failedCount: "فاشلة", duration: "مدة الجولة", sec: "ث" }
@@ -73,13 +75,13 @@ export function Charades({ locale, roundSeconds: initialSeconds = 60, roundsPerT
       <button data-action="primary" className="primary" disabled={!validation.valid} onClick={start}>{t.start}</button>
     </SetupShell>
   );
-  if (screen === "final") return <Final title={t.finalTitle} scores={scores} winner={winner?.[0]} wins={t.wins} />;
+  if (screen === "final") return <Final title={t.finalTitle} scores={scores} winner={winner?.[0]} wins={t.wins} restart={locale === "ar" ? "لعبة جديدة" : "New game"} onRestart={() => { setTeams([]); setScores({}); setTurn(0); setScreen("setup"); }} />;
   const team = teams[turn % teams.length];
   return (
     <section className="actionGame panel">
       <p className="roundBadge">{locale === "ar" ? `${t.turn} ${team}` : `${team.endsWith("s") ? `${team}'` : `${team}'s`} ${t.turn}`}</p>
       {prompt ? <h1 className="actionPrompt">{prompt.text[locale]}</h1> : <h1 className="actionPrompt">{t.exhausted}</h1>}
-      <TimedRound locale={locale} seconds={seconds} resetKey={turn} onExpire={expire}>
+      <TimedRound gameId="charades" locale={locale} seconds={seconds} resetKey={turn} onExpire={expire}>
         {(running) => <>
           <div className="roundActions">
             <button disabled={!running || !prompt} className="success" onClick={() => advance("correct")}>{t.correct}</button>
@@ -94,6 +96,6 @@ export function Charades({ locale, roundSeconds: initialSeconds = 60, roundsPerT
   );
 }
 
-export function Final({ title, scores, winner, wins }: { title: string; scores: Record<string, number>; winner?: string; wins: string }) {
-  return <section className="panel finalScores"><h1>{title}</h1>{Object.entries(scores).map(([team, score]) => <p key={team}><strong>{team}</strong><b>{score}</b></p>)}{winner && <h2>{winner} {wins}</h2>}</section>;
+export function Final({ title, scores, winner, wins, restart, onRestart }: { title: string; scores: Record<string, number>; winner?: string; wins: string; restart?: string; onRestart?: () => void }) {
+  return <section className="panel finalScores"><h1>{title}</h1>{Object.entries(scores).map(([team, score]) => <p key={team}><strong>{team}</strong><b>{score}</b></p>)}{winner && <h2>{winner} {wins}</h2>}{onRestart && <button data-action="primary" className="primaryButton" onClick={onRestart}>{restart}</button>}</section>;
 }

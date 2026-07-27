@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import type { GameId } from "../../games/types";
+import { useGameSessionState } from "../../lib/useGameSessionState";
 
 type TimerState =
   | { status: "ready" | "expired"; remainingMs: number; startedAt: null }
@@ -13,6 +15,7 @@ type Props = {
   resetKey: string | number;
   onExpire: () => void;
   children: (running: boolean) => ReactNode;
+  gameId: GameId;
 };
 
 const remainingAt = (state: TimerState, now: number) =>
@@ -20,20 +23,32 @@ const remainingAt = (state: TimerState, now: number) =>
     ? Math.max(0, state.remainingMs - (now - state.startedAt))
     : state.remainingMs;
 
-export function TimedRound({ seconds, locale, resetKey, onExpire, children }: Props) {
-  const [timer, setTimer] = useState<TimerState>({
+export function TimedRound({ seconds, locale, resetKey, onExpire, children, gameId }: Props) {
+  const isTimerState = (value: unknown): value is TimerState => {
+    if (!value || typeof value !== "object") return false;
+    const timer = value as Partial<TimerState>;
+    return ["ready", "running", "paused", "expired"].includes(String(timer.status)) &&
+      typeof timer.remainingMs === "number" && timer.remainingMs >= 0 && timer.remainingMs <= seconds * 1_000 &&
+      (timer.startedAt === null || (typeof timer.startedAt === "number" && timer.startedAt <= Date.now() + 60_000));
+  };
+  const [timer, setTimer] = useGameSessionState<TimerState>(gameId, locale, "timer", {
     status: "ready",
     remainingMs: seconds * 1_000,
     startedAt: null,
-  });
+  }, isTimerState, (value) => value.status === "running" && remainingAt(value, Date.now()) === 0
+    ? { status: "expired", remainingMs: 0, startedAt: null }
+    : value);
   const [now, setNow] = useState(() => Date.now());
   const expiredRef = useRef(false);
+  const previousResetKey = useRef(resetKey);
 
   useEffect(() => {
+    if (previousResetKey.current === resetKey) return;
+    previousResetKey.current = resetKey;
     expiredRef.current = false;
     setTimer({ status: "ready", remainingMs: seconds * 1_000, startedAt: null });
     setNow(Date.now());
-  }, [resetKey, seconds]);
+  }, [resetKey, seconds, setTimer]);
 
   useEffect(() => {
     if (timer.status !== "running") return;

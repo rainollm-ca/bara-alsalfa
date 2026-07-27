@@ -61,7 +61,7 @@ export default function Home() {
         gameId,
         locale,
         updatedAt: Date.now(),
-        controller: { phase: "entry" },
+        controller: {},
       }));
     }
   }

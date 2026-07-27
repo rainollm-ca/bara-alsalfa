@@ -5,6 +5,7 @@ import { MOST_LIKELY_TO_PROMPTS } from "../../games/content/socialGames";
 import { tallyVotes } from "../../games/engines/socialGames";
 import type { Locale } from "../../games/types";
 import { PlayerNamesField, SetupShell, validateSetup } from "../SetupShell";
+import { isShortString, isStringList, isSafeInteger, useGameSessionState } from "../../lib/useGameSessionState";
 
 type Phase = "setup" | "pass" | "vote" | "result";
 const words = {
@@ -14,13 +15,13 @@ const words = {
 
 export function MostLikelyTo({ locale }: { locale: Locale }) {
   const t = words[locale];
-  const [players, setPlayers] = useState<string[]>([]);
+  const [players, setPlayers] = useGameSessionState("most-likely-to", locale, "players", [], isStringList);
   const [name, setName] = useState("");
-  const [phase, setPhase] = useState<Phase>("setup");
-  const [voter, setVoter] = useState(0);
-  const [choice, setChoice] = useState("");
-  const [votes, setVotes] = useState<string[]>([]);
-  const [promptIndex, setPromptIndex] = useState(0);
+  const [phase, setPhase] = useGameSessionState<Phase>("most-likely-to", locale, "phase", "setup", (value): value is Phase => ["setup", "pass", "vote", "result"].includes(String(value)), (value) => value === "vote" ? "pass" : value);
+  const [voter, setVoter] = useGameSessionState("most-likely-to", locale, "voter", 0, isSafeInteger(0, 15));
+  const [choice, setChoice] = useGameSessionState("most-likely-to", locale, "choice", "", isShortString, () => "");
+  const [votes, setVotes] = useGameSessionState("most-likely-to", locale, "votes", [], isStringList);
+  const [promptIndex, setPromptIndex] = useGameSessionState("most-likely-to", locale, "promptIndex", 0, isSafeInteger(0, MOST_LIKELY_TO_PROMPTS.length - 1));
   const voteHeadingRef = useRef<HTMLParagraphElement>(null);
   const resultHeadingRef = useRef<HTMLHeadingElement>(null);
   useEffect(() => {

@@ -7,6 +7,8 @@ import { SetupShell } from "../SetupShell";
 import { CATEGORY_CHALLENGE_CATEGORIES } from "../../games/content/categoryChallenge";
 import { buildBoard, type CategoryChallengeBoard } from "../../games/engines/categoryChallenge";
 import type { Locale } from "../../lib/game";
+import { getGameStorage, useGameSessionState } from "../../lib/useGameSessionState";
+import { parseSavedSession, serializeSavedSession, SESSION_KEY } from "../../lib/session";
 
 type TeamId = "teamOne" | "teamTwo";
 export type QuestionTimer = {
@@ -158,16 +160,52 @@ type Props = {
 
 export function CategoryChallenge({ locale, onExit, initialSession }: Props) {
   const [state, setState] = useState<CategoryChallengeState>(
-    () => initialSession?.state ?? createCategoryChallengeState(),
+    () => {
+      if (initialSession?.state) return initialSession.state;
+      const storage = getGameStorage();
+      if (!storage) return createCategoryChallengeState();
+      const saved = parseSavedSession(storage.getItem(SESSION_KEY));
+      const value = saved?.gameId === "category-challenge" ? saved.controller.categoryState : null;
+      if (!value || typeof value !== "object") return createCategoryChallengeState();
+      const candidate = value as Omit<CategoryChallengeState, "usedQuestionIds"> & { usedQuestionIds: string[] };
+      if (!Array.isArray(candidate.selectedCategoryIds) || !Array.isArray(candidate.usedQuestionIds)) return createCategoryChallengeState();
+      const activeQuestion = candidate.activeQuestion
+        ? {
+            ...candidate.activeQuestion,
+            revealed: false,
+            timer: candidate.activeQuestion.timer.status === "running" && remainingQuestionSeconds(candidate.activeQuestion.timer, Date.now()) === 0
+              ? stopQuestionTimer(candidate.activeQuestion.timer, Date.now())
+              : candidate.activeQuestion.timer,
+          }
+        : null;
+      return { ...candidate, usedQuestionIds: new Set(candidate.usedQuestionIds), activeQuestion };
+    },
   );
-  const [board, setBoard] = useState<CategoryChallengeBoard | null>(
+  const [board, setBoard] = useGameSessionState<CategoryChallengeBoard | null>(
+    "category-challenge",
+    locale,
+    "board",
     () => initialSession?.board ?? null,
+    (value): value is CategoryChallengeBoard | null => value === null || (typeof value === "object" && value !== null && Array.isArray((value as CategoryChallengeBoard).categories)),
   );
   const [now, setNow] = useState(0);
   const dialogTitleRef = useRef<HTMLHeadingElement>(null);
   const answerHeadingRef = useRef<HTMLHeadingElement>(null);
   const boardRef = useRef<HTMLDivElement>(null);
   const triggeringCellRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    const storage = getGameStorage();
+    if (!storage) return;
+    const existing = parseSavedSession(storage.getItem(SESSION_KEY));
+    const controller = existing?.gameId === "category-challenge" ? existing.controller : {};
+    storage.setItem(SESSION_KEY, serializeSavedSession({
+      gameId: "category-challenge",
+      locale,
+      updatedAt: Date.now(),
+      controller: { ...controller, categoryState: { ...state, usedQuestionIds: [...state.usedQuestionIds] } },
+    }));
+  }, [locale, state]);
 
   useEffect(() => {
     if (state.activeQuestion?.timer.status !== "running") return;

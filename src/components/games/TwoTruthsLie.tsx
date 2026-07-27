@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { createTwoTruthsRound, projectTwoTruthsRound, revealTwoTruthsLie, tallyVotes, type TwoTruthsSecretRound } from "../../games/engines/socialGames";
 import type { Locale } from "../../games/types";
 import { PlayerNamesField, SetupShell, validateSetup } from "../SetupShell";
+import { isShortString, isStringList, isSafeInteger, useGameSessionState } from "../../lib/useGameSessionState";
 
 type Phase = "setup" | "entry-pass" | "entry" | "round-pass" | "vote" | "reveal";
 const copy = {
@@ -13,17 +14,17 @@ const copy = {
 
 export function TwoTruthsLie({ locale }: { locale: Locale }) {
   const t = copy[locale];
-  const [players, setPlayers] = useState<string[]>([]);
+  const [players, setPlayers] = useGameSessionState("two-truths-lie", locale, "players", [], isStringList);
   const [name, setName] = useState("");
-  const [phase, setPhase] = useState<Phase>("setup");
-  const [storyteller, setStoryteller] = useState(0);
-  const [statements, setStatements] = useState(["", "", ""]);
-  const [lie, setLie] = useState<0 | 1 | 2>(0);
-  const [round, setRound] = useState<TwoTruthsSecretRound | null>(null);
-  const [voters, setVoters] = useState<string[]>([]);
-  const [voter, setVoter] = useState(0);
-  const [choice, setChoice] = useState<number | null>(null);
-  const [votes, setVotes] = useState<number[]>([]);
+  const [phase, setPhase] = useGameSessionState<Phase>("two-truths-lie", locale, "phase", "setup", (value): value is Phase => ["setup", "entry-pass", "entry", "round-pass", "vote", "reveal"].includes(String(value)), (value) => value === "entry" ? "entry-pass" : value === "vote" ? "round-pass" : value);
+  const [storyteller, setStoryteller] = useGameSessionState("two-truths-lie", locale, "storyteller", 0, isSafeInteger(0, 11));
+  const [statements, setStatements] = useGameSessionState("two-truths-lie", locale, "statements", ["", "", ""], (value): value is string[] => isStringList(value) && value.length === 3);
+  const [lie, setLie] = useGameSessionState<0 | 1 | 2>("two-truths-lie", locale, "lie", 0, (value): value is 0 | 1 | 2 => value === 0 || value === 1 || value === 2);
+  const [round, setRound] = useGameSessionState<TwoTruthsSecretRound | null>("two-truths-lie", locale, "round", null, (value): value is TwoTruthsSecretRound | null => value === null || (typeof value === "object" && value !== null && isShortString((value as TwoTruthsSecretRound).playerId) && Array.isArray((value as TwoTruthsSecretRound).statements) && (value as TwoTruthsSecretRound).statements.length === 3));
+  const [voters, setVoters] = useGameSessionState("two-truths-lie", locale, "voters", [], isStringList);
+  const [voter, setVoter] = useGameSessionState("two-truths-lie", locale, "voter", 0, isSafeInteger(0, 11));
+  const [choice, setChoice] = useGameSessionState<number | null>("two-truths-lie", locale, "choice", null, (value): value is number | null => value === null || [0, 1, 2].includes(Number(value)), () => null);
+  const [votes, setVotes] = useGameSessionState<number[]>("two-truths-lie", locale, "votes", [], (value): value is number[] => Array.isArray(value) && value.length <= 11 && value.every((item) => [0, 1, 2].includes(item)));
   const firstVoteRef = useRef<HTMLButtonElement>(null);
   const revealButtonRef = useRef<HTMLButtonElement>(null);
   const revealHeadingRef = useRef<HTMLHeadingElement>(null);
