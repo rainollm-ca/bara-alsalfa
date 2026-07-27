@@ -235,6 +235,12 @@ footer { color:#8c918d; font-size:12px; padding:16px; z-index:1; }
 .roomWaiting h2 { display:flex; align-items:center; gap:8px; margin:34px 0 12px; }
 .roomPlayers { width:100%; display:flex; flex-wrap:wrap; justify-content:center; gap:9px; margin-bottom:26px; }
 .roomPlayers span { border:1px solid var(--line); border-radius:999px; padding:10px 15px; background:white; font-weight:800; }
+.pwaStatus { position:fixed; inset-block-end:max(12px,env(safe-area-inset-bottom)); inset-inline:12px; z-index:40; margin:auto; width:min(520px,calc(100% - 24px)); border-radius:14px; padding:11px 16px; background:var(--ink); color:white; text-align:center; font-size:13px; font-weight:800; box-shadow:0 8px 30px rgba(0,0,0,.2); }
+.resumeSession { min-height:560px; display:grid; align-content:center; justify-items:center; gap:14px; padding:32px; text-align:center; }
+.resumeSession>span { font-size:54px; }
+.resumeSession h1 { margin:0; font-size:clamp(32px,8vw,48px); }
+.resumeSession p { max-width:430px; margin:0 0 10px; color:var(--muted); }
+.resumeSession button { width:min(100%,340px); }
 .roomGameBoard { min-height:560px; padding:clamp(28px,6vw,60px); text-align:center; }
 .roomGameBoard>h1 { max-width:760px; margin:24px auto; font-size:clamp(30px,6vw,54px); }
 .roomAnswer,.secretRoomValue { margin:18px auto; border-radius:18px; padding:18px; background:#eaf2e8; color:var(--green); font-size:22px; font-weight:900; }

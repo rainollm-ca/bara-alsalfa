@@ -118,6 +118,8 @@ async function assertMobilePage(page, locale, label) {
 
 async function setLocale(page, locale) {
   await page.goto(baseUrl, { waitUntil: "networkidle" });
+  const newGame = page.locator(".resumeSession .ghostButton");
+  if (await newGame.isVisible().catch(() => false)) await newGame.click();
   const switchButton = page.getByRole("button", { name: locale.switchLabel, exact: true });
   if ((await page.locator("html").getAttribute("lang")) !== locale.id) {
     await switchButton.click();
@@ -127,6 +129,49 @@ async function setLocale(page, locale) {
       document.documentElement.lang === lang && document.documentElement.dir === dir,
     { lang: locale.id, dir: locale.dir },
   );
+}
+
+async function runOfflineQa(browser) {
+  for (const locale of locales) {
+    const context = await browser.newContext({ viewport: viewports[1], serviceWorkers: "allow" });
+    const page = await context.newPage();
+    await setLocale(page, locale);
+    await page.evaluate(() => navigator.serviceWorker.ready);
+    await page.reload({ waitUntil: "networkidle" });
+    await page.locator(".gameAction").nth(2).click();
+    await page.locator(".setupShell").waitFor();
+
+    await context.setOffline(true);
+    await page.reload({ waitUntil: "domcontentloaded" });
+    const resume = page.locator(".resumeSession .primaryButton");
+    await resume.click();
+    await page.locator(".setupShell").waitFor();
+    await assertMobilePage(page, locale, `offline local shell ${locale.id}`);
+
+    const apiWasCached = await page.evaluate(async () => {
+      try {
+        await fetch("/api/rooms");
+        return true;
+      } catch {
+        return false;
+      }
+    });
+    assert.equal(apiWasCached, false, `offline API must not be served from cache (${locale.id})`);
+
+    await page.getByRole("button", { name: locale.id === "ar" ? "المكتبة" : "Game library" }).click();
+    const discard = page.locator(".resumeSession .ghostButton");
+    if (await discard.isVisible().catch(() => false)) await discard.click();
+    await page.locator(".modeOption").nth(1).click();
+    await page.locator(".gameAction").first().click();
+    await page.waitForFunction(() => !navigator.onLine);
+    await expectText(page.locator(".pwaStatus"), locale.id === "ar" ? "الغرف تحتاج اتصالاً" : "Rooms need a connection");
+    await context.close();
+  }
+}
+
+async function expectText(locator, text) {
+  await locator.waitFor();
+  assert.match(await locator.textContent(), new RegExp(text));
 }
 
 async function capture(page, name) {
@@ -277,6 +322,7 @@ try {
   try {
     await runMobileMatrix(browser);
     for (const locale of locales) await captureCategoryBoard(browser, locale);
+    await runOfflineQa(browser);
   } finally {
     await browser.close();
   }

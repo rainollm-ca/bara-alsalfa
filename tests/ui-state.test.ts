@@ -15,6 +15,7 @@ import {
   validateSetup,
 } from "../src/components/SetupShell";
 import { resolveGameView } from "../src/lib/ui-state";
+import { parseSavedSession, serializeSavedSession } from "../src/lib/session";
 
 describe("game library UI state", () => {
   it("coordinates library, playable, and upcoming game views", () => {
@@ -80,6 +81,39 @@ describe("game library UI state", () => {
     expect(setupSource).toContain("aria-checked=");
     expect(topBarSource).toContain('role="group"');
     expect(topBarSource).toContain("aria-pressed=");
+  });
+});
+
+describe("saved local session envelope", () => {
+  it("round-trips a supported, recent local game without trusting arbitrary data", () => {
+    const now = Date.now();
+    const encoded = serializeSavedSession({
+      gameId: "charades",
+      locale: "en",
+      updatedAt: now,
+      controller: { phase: "setup" },
+    });
+    expect(parseSavedSession(encoded, now)).toEqual({
+      version: 1,
+      mode: "local",
+      gameId: "charades",
+      locale: "en",
+      updatedAt: now,
+      controller: { phase: "setup" },
+    });
+  });
+
+  it("rejects room, malformed, unsupported, and expired payloads", () => {
+    const now = Date.now();
+    expect(parseSavedSession("nope", now)).toBeNull();
+    expect(parseSavedSession(JSON.stringify({ version: 1, mode: "room" }), now)).toBeNull();
+    expect(parseSavedSession(JSON.stringify({
+      version: 1, mode: "local", gameId: "unknown", locale: "en", updatedAt: now,
+    }), now)).toBeNull();
+    expect(parseSavedSession(JSON.stringify({
+      version: 1, mode: "local", gameId: "charades", locale: "en",
+      updatedAt: now - 8 * 24 * 60 * 60 * 1000,
+    }), now)).toBeNull();
   });
 });
 
