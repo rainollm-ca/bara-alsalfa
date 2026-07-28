@@ -246,7 +246,10 @@ try {
     uiJourneys[gameId] = { uiJourney: true, synchronized: true, nextRound: 2 };
     for (const context of contexts) await context.close();
   }
-  const reducerMatrix = await host.evaluate(async () => {
+  // The UI journeys above already create nine production rooms. Keep the
+  // reducer stress matrix local so an external smoke run respects the
+  // production room-creation rate limit.
+  const reducerMatrix = managedServer ? await host.evaluate(async () => {
     const postRaw = (path, body, token) => fetch(path, {
       method: "POST",
       headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}) },
@@ -337,7 +340,7 @@ try {
       results[gameId] = { result: true, replayRejected: true, nextRound: 2 };
     }
     return results;
-  });
+  }) : { skipped: "external-rate-limit" };
   console.log(JSON.stringify({
     databaseHealth: true,
     hostCreatedFromUi: true,
