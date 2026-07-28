@@ -6,13 +6,14 @@ import { GAME_CATALOG } from "../games/catalog";
 import type { GameDefinition, GameId, PlayMode } from "../games/types";
 import type { Locale } from "../lib/game";
 
-const LOCALE_KEY = "bara-locale";
+const LOCALE_KEY = "lamma-locale";
+const LEGACY_LOCALE_KEY = "bara-locale";
 
 const libraryCopy = {
   ar: {
-    eyebrow: "ليلة ألعاب على مزاجكم",
-    libraryTitle: "اختاروا لعبتكم",
-    libraryIntro: "ثمان ألعاب خفيفة، ضحكها كثير وقواعدها واضحة.",
+    eyebrow: "لمّة واحدة، حكايات كثيرة",
+    libraryTitle: "اللعب يجمعنا",
+    libraryIntro: "ألعاب جماعية مصمّمة للعائلة والأصدقاء، بالعربي والإنجليزي وعلى جهاز واحد أو عدة أجهزة.",
     localMode: "جهاز واحد",
     localHint: "مرّروا الجوال بينكم",
     roomMode: "غرفة جماعية",
@@ -22,9 +23,9 @@ const libraryCopy = {
     minutes: "دقيقة",
   },
   en: {
-    eyebrow: "A game night made for your people",
-    libraryTitle: "Choose your game",
-    libraryIntro: "Eight easy-to-learn games, made for big laughs and good company.",
+    eyebrow: "One gathering, endless stories",
+    libraryTitle: "Play brings us together",
+    libraryIntro: "Bilingual games for family and friends, on one device or across the whole room.",
     localMode: "One device",
     localHint: "Pass one phone around",
     roomMode: "Group room",
@@ -52,7 +53,7 @@ export function formatPlayerRange(
 
 export function readStoredLocale(storage?: StorageReader): Locale {
   try {
-    const value = storage?.getItem(LOCALE_KEY);
+    const value = storage?.getItem(LOCALE_KEY) ?? storage?.getItem(LEGACY_LOCALE_KEY);
     return value === "en" || value === "ar" ? value : "ar";
   } catch {
     return "ar";
@@ -62,6 +63,7 @@ export function readStoredLocale(storage?: StorageReader): Locale {
 export function writeStoredLocale(locale: Locale, storage?: StorageWriter) {
   try {
     storage?.setItem(LOCALE_KEY, locale);
+    storage?.setItem(LEGACY_LOCALE_KEY, locale);
     return Boolean(storage);
   } catch {
     return false;
@@ -114,8 +116,10 @@ export function GameLibrary({
 
       <div className="gameGrid">
         {GAME_CATALOG.map((game) => (
-          <article className="gameTile" key={game.id}>
-            <div className="gameEmoji" aria-hidden="true">{game.emoji}</div>
+          <article className="gameTile" key={game.id} style={{ "--game-accent": game.art.accent } as React.CSSProperties}>
+            <div className="gameArtwork">
+              <img src={game.art.src} alt={game.art.alt[locale]} />
+            </div>
             <div className="gameTileBody">
               <h2>{game.title[locale]}</h2>
               <p>{game.description[locale]}</p>

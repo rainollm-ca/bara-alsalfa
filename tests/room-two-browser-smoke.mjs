@@ -74,7 +74,7 @@ try {
   await host.getByRole("button", { name: "Start game" }).click();
   await host.locator('[data-game-id="category-challenge"][data-game-phase="play"]').waitFor();
   await guest.locator('[data-game-id="category-challenge"][data-game-phase="play"]').waitFor({ timeout: 6_000 });
-  await host.getByRole("button", { name: "Correct: Smoke Host" }).click();
+  await guest.getByRole("button", { name: "Correct: Smoke Host" }).click();
   await host.locator('[data-game-phase="result"]').waitFor();
   await guest.locator('[data-game-phase="result"]').waitFor({ timeout: 6_000 });
   if (!(await guest.locator(".roomScores").innerText()).includes("Smoke Host: 1") ||
@@ -134,7 +134,7 @@ try {
   const uiJourneys = {
     "category-challenge": { uiJourney: true, synchronized: true, nextRound: 2 },
   };
-  await host.locator('[data-action="next-round"]').click();
+  await guest.locator('[data-action="next-round"]').click();
   await host.getByText("Round 2", { exact: true }).waitFor();
   await guest.getByText("Round 2", { exact: true }).waitFor({ timeout: 6_000 });
 
@@ -174,12 +174,13 @@ try {
       if (!prompt || (await pages[1].locator("body").innerText()).includes(prompt)) {
         throw new Error(`${gameId} active prompt leaked to a non-actor UI.`);
       }
-      await journeyHost.locator('[data-action="correct"]').click();
-      await journeyHost.locator('[data-action="skip"]').click();
+      const controlPage = gameId === "rapid-fire" ? pages[1] : journeyHost;
+      await controlPage.locator('[data-action="correct"]').click();
+      await controlPage.locator('[data-action="skip"]').click();
       const deadline = Number(await journeyHost.locator(".roomTimer").getAttribute("data-timer-ends-at"));
       await new Promise((resolve) => setTimeout(resolve, Math.max(0, deadline - Date.now() + 50)));
-      if (await journeyHost.locator('[data-action="expire"]').count()) {
-        await journeyHost.locator('[data-action="expire"]').click();
+      if (await controlPage.locator('[data-action="expire"]').count()) {
+        await controlPage.locator('[data-action="expire"]').click();
       }
     } else if (gameId === "who-am-i") {
       const hostIdentities = await journeyHost.locator("section.roomGameBoard").innerText();
@@ -233,7 +234,8 @@ try {
     if (["charades", "forbidden-word", "rapid-fire"].includes(gameId)) {
       const resultText = await journeyHost.locator(".roomGameBoard").innerText();
       if (!resultText.includes("Correct: 1") || !resultText.includes("Skip: 1") ||
-          !(await journeyHost.locator(".roomScores").count())) {
+          !(await journeyHost.locator(".roomScores").count()) ||
+          resultText.includes("team-1") || resultText.includes("team-2")) {
         throw new Error(`${gameId} result did not render authoritative summary/team score.`);
       }
     }
@@ -316,7 +318,13 @@ try {
         await post(actionPath, { contractVersion: 1, action: finalAction }, finalToken);
       }
       const replay = await post(actionPath, { contractVersion: 1, action: finalAction }, finalToken);
-      const next = await post(actionPath, { contractVersion: 1, action: { type: "game/next-round" } }, created.hostToken);
+      const current = await fetch(`/api/rooms/${created.code}/state`, {
+        headers: { authorization: `Bearer ${created.playerToken}` },
+      }).then((response) => response.json());
+      const next = await post(actionPath, {
+        contractVersion: 1,
+        action: { type: "game/next-round", expectedRevision: current.room.gameState.revision },
+      }, created.hostToken);
       const before = started.gameState.publicData;
       const after = next.data.room.gameState.publicData;
       if (replay.status < 400 || next.status !== 200 || after.round !== 2 || after.promptIndex === before.promptIndex) {

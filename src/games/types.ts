@@ -27,4 +27,10 @@ export type GameDefinition = {
   };
   approximateMinutes: number;
   supportedModes: PlayMode[];
+  art: {
+    src: string;
+    alt: LocalizedText;
+    accent: string;
+  };
+  contentFamilies: readonly string[];
 };

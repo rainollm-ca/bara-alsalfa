@@ -24,15 +24,31 @@ function timedDuration() {
 }
 
 function timedTeams(room: Room) {
-  return [
-    { id: "team-1", playerIds: room.players.filter((_, index) => index % 2 === 0).map((player) => player.id) },
-    { id: "team-2", playerIds: room.players.filter((_, index) => index % 2 === 1).map((player) => player.id) },
-  ];
+  return [0, 1].map((sideIndex) => {
+    const members = room.players.filter((_, index) => index % 2 === sideIndex);
+    const memberIds = members.map((player) => player.id);
+    const label = members.length === 1
+      ? { en: members[0]!.name, ar: members[0]!.name }
+      : sideIndex === 0
+        ? { en: "Team 1", ar: "الفريق ١" }
+        : { en: "Team 2", ar: "الفريق ٢" };
+    return { id: `team-${sideIndex + 1}`, label, memberIds, playerIds: memberIds };
+  });
 }
 
-function timedPrompt(gameId: GameId, index: number) {
+function roomCategoryIds(room: Room): string[] {
+  return Array.isArray(room.selectedCategoryIds) ? [...room.selectedCategoryIds] : [];
+}
+
+function timedPromptSource(gameId: GameId, categoryIds: readonly string[] = []) {
   const source = gameId === "charades" ? CHARADES_PROMPTS :
     gameId === "forbidden-word" ? FORBIDDEN_WORD_PROMPTS : RAPID_FIRE_PROMPTS;
+  const selected = categoryIds.length ? source.filter((prompt) => categoryIds.includes(prompt.categoryId ?? "")) : source;
+  return selected.length ? selected : source;
+}
+
+function timedPrompt(gameId: GameId, index: number, categoryIds: readonly string[] = []) {
+  const source = timedPromptSource(gameId, categoryIds);
   return source[index % source.length]!;
 }
 
@@ -71,7 +87,8 @@ export function initializeGame(
     );
   }
   const prior = previous?.publicData as State | undefined;
-  const base: State = { gameId, round, phase: "play", scores: prior?.scores ?? scores(room) };
+  const selectedCategoryIds = prior?.selectedCategoryIds ?? roomCategoryIds(room);
+  const base: State = { gameId, round, phase: "play", scores: prior?.scores ?? scores(room), selectedCategoryIds };
   const turnHistory = [...(prior?.turnHistory ?? [])];
   const activePlayerSelection = selectRandomCycleIndex(room.players.length, turnHistory, randomInt);
   const activePlayerIndex = activePlayerSelection.index;
@@ -82,7 +99,10 @@ export function initializeGame(
   let privateByPlayerId: Record<string, JsonValue> | undefined;
   switch (gameId) {
     case "category-challenge": {
-      const questions = CATEGORY_CHALLENGE_CATEGORIES.flatMap((category) => category.questions);
+      const selectedCategories = selectedCategoryIds.length
+        ? CATEGORY_CHALLENGE_CATEGORIES.filter((category) => selectedCategoryIds.includes(category.id))
+        : CATEGORY_CHALLENGE_CATEGORIES;
+      const questions = selectedCategories.flatMap((category) => category.questions);
       const promptHistory = [...(prior?.promptHistory ?? [])];
       const selection = selectRandomCycleIndex(questions.length, promptHistory, randomInt);
       const selectedIndex = selection.index;
@@ -101,15 +121,16 @@ export function initializeGame(
       const activeActorId = activeTeam.playerIds[actorIndex]!;
       const history = [...(priorServer?.promptHistoryIndices ?? [])];
       const publicHistory = [...(prior?.roundPromptHistory ?? [])];
-      const sourceLength = gameId === "charades" ? CHARADES_PROMPTS.length :
-        gameId === "forbidden-word" ? FORBIDDEN_WORD_PROMPTS.length : RAPID_FIRE_PROMPTS.length;
+      const sourceLength = timedPromptSource(gameId, selectedCategoryIds).length;
       const selection = selectRandomCycleIndex(sourceLength, history, randomInt);
       const currentPromptIndex = selection.index;
-      const selected = timedPrompt(gameId, currentPromptIndex);
+      const selected = timedPrompt(gameId, currentPromptIndex, selectedCategoryIds);
       Object.assign(base, {
         teams,
         activeTeamId: activeTeam.id,
+        activeTeamLabel: activeTeam.label,
         activeActorId,
+        activeActorName: room.players.find((player) => player.id === activeActorId)!.name,
         activePlayerId: activeActorId,
         teamScores: prior?.teamScores ?? { "team-1": 0, "team-2": 0 },
         roundStartScore: (prior?.teamScores ?? { "team-1": 0, "team-2": 0 })[activeTeam.id],
@@ -124,17 +145,19 @@ export function initializeGame(
       }
       privateByPlayerId = {
         [activeActorId]: secret,
-        [room.hostPlayerId]: secret,
         __server: { selectedPromptIndex: currentPromptIndex, promptHistoryIndices: selection.history.slice(0, -1) },
       };
       break;
     }
     case "out-of-loop": {
       const priorServer = previous?.privateByPlayerId?.__server as Record<string, any> | undefined;
+      const selectedCategories = selectedCategoryIds.length
+        ? CATEGORIES.filter((category) => selectedCategoryIds.includes(category.id))
+        : CATEGORIES;
       const categoryHistory = [...(prior?.categoryHistory ?? [])];
-      const categorySelection = selectRandomCycleIndex(CATEGORIES.length, categoryHistory, randomInt);
+      const categorySelection = selectRandomCycleIndex(selectedCategories.length, categoryHistory, randomInt);
       const categoryIndex = categorySelection.index;
-      const category = CATEGORIES[categoryIndex]!;
+      const category = selectedCategories[categoryIndex]!;
       const wordHistories = { ...(priorServer?.wordHistories ?? {}) } as Record<string, number[]>;
       const wordHistory = [...(wordHistories[String(categoryIndex)] ?? [])];
       const wordSelection = selectRandomCycleIndex(category.words.length, wordHistory, randomInt);
@@ -163,15 +186,18 @@ export function initializeGame(
     }
     case "who-am-i": {
       const priorServer = previous?.privateByPlayerId?.__server as Record<string, any> | undefined;
+      const identitiesSource = selectedCategoryIds.length
+        ? WHO_AM_I_PROMPTS.filter((prompt) => selectedCategoryIds.includes(prompt.categoryId ?? ""))
+        : WHO_AM_I_PROMPTS;
       const identityHistory = [...(priorServer?.identityHistory ?? [])];
       let available = [...identityHistory];
       const identityIndexes = room.players.map(() => {
-        const selection = selectRandomCycleIndex(WHO_AM_I_PROMPTS.length, available, randomInt);
+        const selection = selectRandomCycleIndex(identitiesSource.length, available, randomInt);
         available = selection.history;
         return selection.index;
       });
       const identities = Object.fromEntries(room.players.map((player, index) => [
-        player.id, localized(WHO_AM_I_PROMPTS[identityIndexes[index]!]!.text),
+        player.id, localized(identitiesSource[identityIndexes[index]!]!.text),
       ]));
       Object.assign(base, { turnPlayerId: activePlayer.id, promptIndex });
       privateByPlayerId = Object.fromEntries(room.players.map((player) => [
@@ -218,6 +244,15 @@ function requireHost(isHost: boolean) {
   if (!isHost) throw new RoomError("HOST_ONLY", "Only the host can control this round.");
 }
 
+function requireTimedController(room: Room, state: State, actorId: string | undefined) {
+  if (room.players.length === 2 && room.players.some((candidate) => candidate.id === actorId)) return;
+  const activeTeam = state.teams?.find((team: State) => team.id === state.activeTeamId);
+  const memberIds = activeTeam?.memberIds ?? activeTeam?.playerIds ?? [];
+  if (!actorId || !memberIds.includes(actorId)) {
+    throw new RoomError("PLAYER_ONLY", "Only a member of the active team can control this round.");
+  }
+}
+
 function player(room: Room, actorId: string | undefined) {
   const found = room.players.find((candidate) => candidate.id === actorId);
   if (!found) throw new RoomError("PLAYER_ONLY", "This action requires the intended player.");
@@ -249,13 +284,15 @@ export function reduceGame(
 
   switch (action.type) {
     case "category/score": {
-      requireHost(isHost); exact(action, ["type", "correctPlayerId"]);
+      player(room, actorId); exact(action, ["type", "correctPlayerId"]);
       if (state.phase !== "play") throw new RoomError("INVALID_ACTION", "Category round is already complete.");
       if (action.correctPlayerId !== null && !room.players.some((p) => p.id === action.correctPlayerId)) {
         throw new RoomError("INVALID_ACTION", "Scored player is not in this room.");
       }
       if (action.correctPlayerId) state.scores[action.correctPlayerId] += 1;
       state.lastScoredPlayerId = action.correctPlayerId;
+      state.scoreChange = action.correctPlayerId ? 1 : 0;
+      state.cumulativeScore = action.correctPlayerId ? state.scores[action.correctPlayerId] : null;
       state.answer = privateState.__server.answer;
       state.phase = "result";
       break;
@@ -263,7 +300,7 @@ export function reduceGame(
     case "charades/mark":
     case "forbidden-word/mark":
     case "rapid-fire/mark": {
-      requireHost(isHost); exact(action, ["type", "outcome"]);
+      requireTimedController(room, state, actorId); exact(action, ["type", "outcome"]);
       if (state.phase !== "play" || now > state.timerEndsAt) {
         throw new RoomError("INVALID_ACTION", "The timed round has expired.");
       }
@@ -286,8 +323,7 @@ export function reduceGame(
         ...privateState.__server.promptHistoryIndices,
         privateState.__server.selectedPromptIndex,
       ];
-      const sourceLength = room.selectedGame === "charades" ? CHARADES_PROMPTS.length :
-        room.selectedGame === "forbidden-word" ? FORBIDDEN_WORD_PROMPTS.length : RAPID_FIRE_PROMPTS.length;
+      const sourceLength = timedPromptSource(room.selectedGame, state.selectedCategoryIds ?? []).length;
       state.promptIndex += 1;
       const selection = selectRandomCycleIndex(
         sourceLength,
@@ -296,17 +332,19 @@ export function reduceGame(
       );
       privateState.__server.selectedPromptIndex = selection.index;
       privateState.__server.promptHistoryIndices = selection.history.slice(0, -1);
-      const selected = timedPrompt(room.selectedGame, privateState.__server.selectedPromptIndex);
+      const selected = timedPrompt(room.selectedGame, privateState.__server.selectedPromptIndex, state.selectedCategoryIds ?? []);
       const secret: Record<string, JsonValue> = { prompt: localized(selected.text) };
       if ("forbidden" in selected && Array.isArray(selected.forbidden)) {
         secret.forbidden = selected.forbidden.map((word) => localized(word));
       }
       privateState[state.activeActorId] = secret;
-      privateState[room.hostPlayerId] = secret;
+      for (const playerId of Object.keys(privateState)) {
+        if (playerId !== state.activeActorId && playerId !== "__server") delete privateState[playerId];
+      }
       break;
     }
     case "timed/expire": {
-      requireHost(isHost); exact(action, ["type"]);
+      requireTimedController(room, state, actorId); exact(action, ["type"]);
       if (!["charades", "forbidden-word", "rapid-fire"].includes(room.selectedGame) ||
         state.phase !== "play" || now < state.timerEndsAt) {
         throw new RoomError("INVALID_ACTION", "Timed round cannot expire yet.");

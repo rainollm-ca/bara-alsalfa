@@ -12,6 +12,8 @@ export const GAME_CATALOG: GameDefinition[] = [
     playerRange: { min: 2, max: 12 },
     approximateMinutes: 15,
     supportedModes: ["local", "room"],
+    art: { src: "/games/category-challenge.png", alt: { ar: "بطاقات أسئلة وتاج التحدّي", en: "Quiz cards and a challenge crown" }, accent: "#E5A93D" },
+    contentFamilies: ["knowledge", "arab-world", "islamic"],
   },
   {
     id: "out-of-loop",
@@ -24,6 +26,8 @@ export const GAME_CATALOG: GameDefinition[] = [
     playerRange: { min: 3, max: 12 },
     approximateMinutes: 15,
     supportedModes: ["local", "room"],
+    art: { src: "/games/out-of-loop.png", alt: { ar: "دائرة حوار وفيها شخص خارج السالفة", en: "A conversation circle with one player out of the loop" }, accent: "#A9D5C2" },
+    contentFamilies: ["everyday", "arab-world", "family"],
   },
   {
     id: "charades",
@@ -36,6 +40,8 @@ export const GAME_CATALOG: GameDefinition[] = [
     playerRange: { min: 4, max: 16 },
     approximateMinutes: 20,
     supportedModes: ["local", "room"],
+    art: { src: "/games/charades.png", alt: { ar: "أقنعة وأيادٍ تمثّل بصمت", en: "Theatre masks and expressive hands" }, accent: "#6E4E72" },
+    contentFamilies: ["performance", "family", "arab-world"],
   },
   {
     id: "forbidden-word",
@@ -48,6 +54,8 @@ export const GAME_CATALOG: GameDefinition[] = [
     playerRange: { min: 4, max: 16 },
     approximateMinutes: 20,
     supportedModes: ["local", "room"],
+    art: { src: "/games/forbidden-word.png", alt: { ar: "فقاعات كلام وإشارة منع", en: "Speech bubbles with a playful stop sign" }, accent: "#D8674B" },
+    contentFamilies: ["words", "family", "arab-world"],
   },
   {
     id: "who-am-i",
@@ -60,6 +68,8 @@ export const GAME_CATALOG: GameDefinition[] = [
     playerRange: { min: 2, max: 12 },
     approximateMinutes: 15,
     supportedModes: ["local", "room"],
+    art: { src: "/games/who-am-i.png", alt: { ar: "شخصية غامضة وبطاقة سؤال", en: "A mystery identity and question card" }, accent: "#6E4E72" },
+    contentFamilies: ["people", "arab-world", "islamic-civilization"],
   },
   {
     id: "rapid-fire",
@@ -72,6 +82,8 @@ export const GAME_CATALOG: GameDefinition[] = [
     playerRange: { min: 2, max: 12 },
     approximateMinutes: 10,
     supportedModes: ["local", "room"],
+    art: { src: "/games/rapid-fire.png", alt: { ar: "برق ونبض للإجابات السريعة", en: "Lightning and a pulse for rapid answers" }, accent: "#E5A93D" },
+    contentFamilies: ["quick", "knowledge", "family"],
   },
   {
     id: "most-likely-to",
@@ -84,6 +96,8 @@ export const GAME_CATALOG: GameDefinition[] = [
     playerRange: { min: 3, max: 16 },
     approximateMinutes: 15,
     supportedModes: ["local", "room"],
+    art: { src: "/games/most-likely-to.png", alt: { ar: "مجموعة تشير إلى لاعب", en: "A group pointing toward one player" }, accent: "#46D7B8" },
+    contentFamilies: ["social", "family", "friends"],
   },
   {
     id: "two-truths-lie",
@@ -96,5 +110,7 @@ export const GAME_CATALOG: GameDefinition[] = [
     playerRange: { min: 3, max: 12 },
     approximateMinutes: 20,
     supportedModes: ["local", "room"],
+    art: { src: "/games/two-truths-lie.png", alt: { ar: "ثلاث بطاقات وواحدة مختلفة", en: "Three statement cards with one different card" }, accent: "#6E4E72" },
+    contentFamilies: ["social", "personal", "friends"],
   },
 ];

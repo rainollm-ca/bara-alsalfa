@@ -5,7 +5,8 @@ describe("service worker safety policy", () => {
   const worker = readFileSync("public/sw.js", "utf8");
 
   it("versions and cleans its app-shell cache", () => {
-    expect(worker).toContain("bara-shell-v");
+    expect(worker).toContain("lamma-shell-v");
+    expect(worker).toContain('key.startsWith("bara-")');
     expect(worker).toContain("caches.delete");
     expect(worker).toContain('cache.addAll(APP_SHELL)');
     expect(worker).not.toContain("caches.match(");

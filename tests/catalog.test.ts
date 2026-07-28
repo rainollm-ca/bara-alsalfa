@@ -26,6 +26,10 @@ describe("GAME_CATALOG", () => {
       expect(game.title.en.trim()).not.toBe("");
       expect(game.description.ar.trim()).not.toBe("");
       expect(game.description.en.trim()).not.toBe("");
+      expect(game.art.src).toBe(`/games/${game.id}.png`);
+      expect(game.art.alt.ar.trim()).not.toBe("");
+      expect(game.art.alt.en.trim()).not.toBe("");
+      expect(game.contentFamilies.length).toBeGreaterThan(0);
     }
   });
 });

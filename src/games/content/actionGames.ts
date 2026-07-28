@@ -3,6 +3,7 @@ import type { LocalizedText } from "../types";
 export type ActionPrompt = {
   readonly id: string;
   readonly text: Readonly<LocalizedText>;
+  readonly categoryId?: string;
 };
 
 export type ForbiddenWordPrompt = ActionPrompt & {
@@ -46,7 +47,35 @@ const SEEDS: readonly Seed[] = [
 
 const cloneText = (ar: string, en: string): Readonly<LocalizedText> => ({ ar, en });
 
+export const CONTENT_CATEGORY_LABELS = {
+  "arab-islamic-civilization": { ar: "العرب والحضارة الإسلامية", en: "Arab & Islamic civilization" },
+  "world-figures": { ar: "شخصيات عالمية", en: "World figures" },
+  "fictional-family": { ar: "عائلية وخيالية", en: "Family & fictional" },
+  "sports-entertainment": { ar: "رياضة وترفيه", en: "Sports & entertainment" },
+  "stories-heroes": { ar: "قصص وأبطال", en: "Stories & heroes" },
+  "islamic-knowledge": { ar: "معرفة إسلامية", en: "Islamic knowledge" },
+  "prophets-messengers": { ar: "الأنبياء والرسل", en: "Prophets & messengers" },
+  "seerah-companions": { ar: "السيرة والصحابة", en: "Seerah & companions" },
+  "quran-themes-stories": { ar: "موضوعات وقصص القرآن", en: "Quran themes & stories" },
+  "everyday-family": { ar: "الحياة اليومية والعائلة", en: "Everyday life & family" },
+  "food-places": { ar: "طعام وأماكن", en: "Food & places" },
+  "nature-science": { ar: "طبيعة وعلوم", en: "Nature & science" },
+  "sports": { ar: "رياضة", en: "Sports" },
+  "professions": { ar: "مهن", en: "Professions" },
+  "science-technology": { ar: "علوم وتقنية", en: "Science & technology" },
+  "performance": { ar: "خيال وتمثيل", en: "Imagination & performance" },
+  "word-play": { ar: "لغة وكلمات", en: "Words & language" },
+} as const;
+
 const IDENTITY_SEEDS: readonly (readonly [string, string])[] = [
+  ["ابن سينا", "Ibn Sina"], ["الخوارزمي", "Al-Khwarizmi"],
+  ["ابن الهيثم", "Ibn al-Haytham"], ["ابن بطوطة", "Ibn Battuta"],
+  ["صلاح الدين الأيوبي", "Salah al-Din"], ["نجيب محفوظ", "Naguib Mahfouz"],
+  ["أحمد زويل", "Ahmed Zewail"], ["سميرة موسى", "Sameera Moussa"],
+  ["غسان كنفاني", "Ghassan Kanafani"], ["محمود درويش", "Mahmoud Darwish"],
+  ["محمد صلاح", "Mohamed Salah"], ["هيفاء المنصور", "Haifaa al-Mansour"],
+  ["زها حديد", "Zaha Hadid"], ["عمر الشريف", "Omar Sharif"],
+  ["سميحة أيوب", "Samiha Ayoub"], ["دريد لحام", "Duraid Lahham"],
   ["ألبرت أينشتاين", "Albert Einstein"], ["كليوباترا", "Cleopatra"],
   ["ويليام شكسبير", "William Shakespeare"], ["ليونيل ميسي", "Lionel Messi"],
   ["ماري كوري", "Marie Curie"], ["شارلوك هولمز", "Sherlock Holmes"],
@@ -77,6 +106,18 @@ const IDENTITY_SEEDS: readonly (readonly [string, string])[] = [
   ["وندر وومان", "Wonder Woman"], ["سبايدرمان", "Spider-Man"],
   ["الرجل الحديدي", "Iron Man"], ["كابتن أمريكا", "Captain America"],
   ["الأميرة ياسمين", "Princess Jasmine"], ["ذات الرداء الأحمر", "Little Red Riding Hood"],
+  ["آدم عليه السلام", "Prophet Adam"], ["نوح عليه السلام", "Prophet Noah"],
+  ["إبراهيم عليه السلام", "Prophet Abraham"], ["موسى عليه السلام", "Prophet Moses"],
+  ["عيسى عليه السلام", "Prophet Jesus"],
+  ["أبو بكر الصديق رضي الله عنه", "Abu Bakr al-Siddiq"],
+  ["عمر بن الخطاب رضي الله عنه", "Umar ibn al-Khattab"],
+  ["عثمان بن عفان رضي الله عنه", "Uthman ibn Affan"],
+  ["علي بن أبي طالب رضي الله عنه", "Ali ibn Abi Talib"],
+  ["خديجة بنت خويلد رضي الله عنها", "Khadijah bint Khuwaylid"],
+  ["أصحاب الكهف", "The People of the Cave"],
+  ["أصحاب الفيل", "The People of the Elephant"],
+  ["ذو القرنين", "Dhul-Qarnayn"],
+  ["قارون", "Qarun"], ["لقمان الحكيم", "Luqman the Wise"],
 ];
 
 const CHARADES_SEEDS: readonly (readonly [string, string])[] = [
@@ -112,7 +153,86 @@ const CHARADES_SEEDS: readonly (readonly [string, string])[] = [
   ["اكتشاف فأر", "Spotting a mouse"], ["عبور نهر", "Crossing a river"],
 ];
 
+const FICTIONAL_IDENTITIES = new Set([
+  "Sherlock Holmes", "Cinderella", "Superman", "Batman", "Harry Potter", "Tom and Jerry",
+  "Mickey Mouse", "SpongeBob", "Shrek", "Elsa", "Aladdin", "Peter Pan", "Pikachu",
+  "Sonic", "Mario", "Wonder Woman", "Spider-Man", "Iron Man", "Captain America",
+  "Princess Jasmine", "Little Red Riding Hood", "Mr. Incredible", "Woody", "Buzz Lightyear",
+  "Simba", "Nemo",
+]);
+const STORY_IDENTITIES = new Set(["Robin Hood", "Tarzan", "Dracula", "Hercules"]);
+const PROPHET_IDENTITIES = new Set([
+  "Prophet Adam", "Prophet Noah", "Prophet Abraham", "Prophet Moses", "Prophet Jesus",
+]);
+const SEERAH_COMPANION_IDENTITIES = new Set([
+  "Abu Bakr al-Siddiq", "Umar ibn al-Khattab", "Uthman ibn Affan", "Ali ibn Abi Talib",
+  "Khadijah bint Khuwaylid",
+]);
+const QURAN_STORY_IDENTITIES = new Set([
+  "The People of the Cave", "The People of the Elephant", "Dhul-Qarnayn", "Qarun",
+  "Luqman the Wise",
+]);
+const SPORTS_ENTERTAINMENT_IDENTITIES = new Set([
+  "Lionel Messi", "Mohamed Salah", "Muhammad Ali", "Serena Williams", "Cristiano Ronaldo",
+  "Umm Kulthum", "Fairuz", "Michael Jackson", "Adele", "Elvis Presley", "Taylor Swift",
+  "Beyoncé", "Leonardo DiCaprio", "Charlie Chaplin", "Jackie Chan", "Mr. Bean",
+  "Omar Sharif", "Samiha Ayoub", "Duraid Lahham",
+]);
+
+function identityCategory(en: string, index: number) {
+  if (PROPHET_IDENTITIES.has(en)) return "prophets-messengers";
+  if (SEERAH_COMPANION_IDENTITIES.has(en)) return "seerah-companions";
+  if (QURAN_STORY_IDENTITIES.has(en)) return "quran-themes-stories";
+  if (index < 16) return "arab-islamic-civilization";
+  if (STORY_IDENTITIES.has(en)) return "stories-heroes";
+  if (FICTIONAL_IDENTITIES.has(en)) return "fictional-family";
+  if (SPORTS_ENTERTAINMENT_IDENTITIES.has(en)) return "sports-entertainment";
+  return "world-figures";
+}
+
+function charadesCategory(en: string) {
+  if (/violin|photo|magic|story|sculpt|typewriter/i.test(en)) return "performance";
+  if (/car|map|trip|horse|boat|river|elevator|race/i.test(en)) return "everyday-family";
+  if (/ball|skate|tightrope|ice/i.test(en)) return "sports";
+  if (/interview|faucet|haircut|paint|window/i.test(en)) return "professions";
+  return "everyday-family";
+}
+
+function rapidCategory(en: string, index: number) {
+  if ([0, 3, 5, 6, 7].includes(index)) return "quran-themes-stories";
+  if ([1, 8, 9, 10].includes(index)) return "prophets-messengers";
+  if ([2, 11, 12, 13, 14].includes(index)) return "seerah-companions";
+  if (index === 4) return "arab-islamic-civilization";
+  if (/letter|words|days|numbers/i.test(en)) return "word-play";
+  if (/planet|animal|bird|sky|green|wood|plant|body/i.test(en)) return "nature-science";
+  if (/sport|ball|boxing|swimming/i.test(en)) return "sports";
+  if (/Arab|capital|cities|countries/i.test(en)) return "food-places";
+  return "everyday-family";
+}
+
+const FORBIDDEN_CATEGORY_MAP: Record<string, string> = {
+  animal: "nature-science", travel: "everyday-family", job: "professions",
+  food: "food-places", technology: "science-technology", weather: "nature-science",
+  sport: "sports", space: "nature-science", music: "performance", machine: "science-technology",
+  device: "science-technology", art: "performance", object: "everyday-family", performance: "performance",
+};
+
 const RAPID_SEEDS: readonly (readonly [string, string])[] = [
+  ["اذكر ثلاثة من أسماء سور القرآن", "Name three surahs of the Quran"],
+  ["اذكر ثلاثة أنبياء وردت أسماؤهم في القرآن", "Name three prophets mentioned in the Quran"],
+  ["سمّ مدينتين ارتبطتا بالسيرة النبوية", "Name two cities connected to the Seerah"],
+  ["اذكر ثلاث قيم يحث عليها الإسلام", "Name three values encouraged in Islam"],
+  ["سمّ ثلاثة علماء من الحضارة الإسلامية", "Name three scholars from Islamic civilization"],
+  ["اذكر ثلاث قصص لأنبياء وردت في القرآن", "Name three prophetic stories found in the Quran"],
+  ["سمّ ثلاثة حيوانات ورد ذكرها في القرآن", "Name three animals mentioned in the Quran"],
+  ["اذكر ثلاثة موضوعات متكررة في القرآن", "Name three recurring themes in the Quran"],
+  ["سمّ ثلاثة رسل من أولي العزم", "Name three of the resolute messengers"],
+  ["اذكر ثلاثة أنبياء عاشوا قبل عيسى عليه السلام", "Name three prophets who lived before Jesus"],
+  ["سمّ نبيين ارتبطت قصتهما بمصر", "Name two prophets whose stories are connected to Egypt"],
+  ["اذكر ثلاثة من كبار الصحابة", "Name three well-known companions"],
+  ["سمّ حدثين من أحداث السيرة قبل الهجرة", "Name two Seerah events before the Hijrah"],
+  ["اذكر ثلاثة أماكن ارتبطت بالسيرة النبوية", "Name three places connected to the Seerah"],
+  ["سمّ اثنين من كتّاب الوحي", "Name two scribes of revelation"],
   ["اذكر ثلاث دول تبدأ بحرف الميم", "Identify three countries beginning with M"],
   ["عدّد أربعة أشياء في المطبخ", "Give four things found in a kitchen"],
   ["ما لونان يصنعان اللون الأخضر؟", "Which two colors make green?"],
@@ -221,6 +341,7 @@ export const CHARADES_PROMPTS: readonly ActionPrompt[] = CHARADES_SEEDS.map(
   ([ar, en], index) => ({
     id: `charades-${String(index + 1).padStart(3, "0")}`,
     text: cloneText(ar, en),
+    categoryId: charadesCategory(en),
   }),
 );
 
@@ -228,6 +349,7 @@ export const WHO_AM_I_PROMPTS: readonly ActionPrompt[] = IDENTITY_SEEDS.map(
   ([ar, en], index) => ({
     id: `identity-${String(index + 1).padStart(3, "0")}`,
     text: cloneText(ar, en),
+    categoryId: identityCategory(en, index),
   }),
 );
 
@@ -235,6 +357,7 @@ export const RAPID_FIRE_PROMPTS: readonly ActionPrompt[] = RAPID_SEEDS.map(
   ([ar, en], index) => ({
     id: `rapid-fire-${String(index + 1).padStart(3, "0")}`,
     text: cloneText(ar, en),
+    categoryId: rapidCategory(en, index),
   }),
 );
 
@@ -242,6 +365,7 @@ export const FORBIDDEN_WORD_PROMPTS: readonly ForbiddenWordPrompt[] = SEEDS.map(
   ([ar, en, categoryAr, categoryEn], index) => ({
     id: `forbidden-${String(index + 1).padStart(3, "0")}`,
     text: cloneText(ar, en),
+    categoryId: FORBIDDEN_CATEGORY_MAP[categoryEn] ?? "everyday-family",
     forbidden: (() => {
       const related =
         forbiddenByCategory[categoryEn] ??

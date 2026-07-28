@@ -2,19 +2,29 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "برا السالفة | Party Games",
-  description: "ثمان ألعاب جماعية بالعربية والإنجليزية للأصدقاء والعائلة | Eight bilingual party games for friends and family.",
-  applicationName: "برا السالفة",
+  metadataBase: new URL("https://lamma.rainomotion.com"),
+  title: "لمّة | Lamma — Play together",
+  description: "ألعاب جماعية عربية وإنجليزية للعائلة والأصدقاء، على جهاز واحد أو عدة أجهزة | Bilingual party games for every gathering.",
+  applicationName: "Lamma | لمّة",
+  alternates: { canonical: "/" },
+  openGraph: {
+    type: "website",
+    url: "/",
+    siteName: "Lamma | لمّة",
+    title: "لمّة | Lamma — Play together",
+    description: "Bilingual party games for family and friends, on one device or across the whole room.",
+    images: [{ url: "/games/lamma-game-covers-sheet.png", width: 1536, height: 1024, alt: "Lamma party game collection" }],
+  },
   manifest: "/manifest.webmanifest",
   icons: {
-    icon: [{ url: "/icon.svg", type: "image/svg+xml" }],
-    shortcut: "/icon.svg",
+    icon: [{ url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" }],
+    shortcut: "/icons/icon-192.png",
     apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
   },
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "برا السالفة",
+    title: "لمّة",
   },
   formatDetection: {
     telephone: false,
@@ -25,7 +35,7 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: "#196b50",
+  themeColor: "#123D3A",
   colorScheme: "light",
 };
 
@@ -35,7 +45,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       <body>
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var l=localStorage.getItem("bara-locale");if(l==="ar"||l==="en"){document.documentElement.lang=l;document.documentElement.dir=l==="ar"?"rtl":"ltr"}}catch(e){}})()`,
+            __html: `(function(){try{var l=localStorage.getItem("lamma-locale")||localStorage.getItem("bara-locale");if(l==="ar"||l==="en"){document.documentElement.lang=l;document.documentElement.dir=l==="ar"?"rtl":"ltr"}}catch(e){}})()`,
           }}
         />
         {children}

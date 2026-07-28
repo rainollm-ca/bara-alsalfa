@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { PlayerNamesField, SetupShell, normalizeSetupNames, validateSetup } from "../SetupShell";
-import { WHO_AM_I_PROMPTS, type ActionPrompt } from "../../games/content/actionGames";
+import { CONTENT_CATEGORY_LABELS, WHO_AM_I_PROMPTS, type ActionPrompt } from "../../games/content/actionGames";
 import { assignPrivateIdentities } from "../../games/engines/actionGames";
 import type { Locale } from "../../lib/game";
 import { isActionPrompt, isBoolean, isPlainRecord, isStringList, isSafeInteger, useGameSessionState } from "../../lib/useGameSessionState";
@@ -15,11 +15,13 @@ export function WhoAmI({ locale, prompts = WHO_AM_I_PROMPTS, random = Math.rando
   const [index, setIndex] = useGameSessionState("who-am-i", locale, "index", 0, isSafeInteger(0, 11));
   const [revealed, setRevealed] = useGameSessionState("who-am-i", locale, "revealed", false, isBoolean, () => false);
   const [playing, setPlaying] = useGameSessionState("who-am-i", locale, "playing", false, isBoolean);
+  const categories = [...new Set(prompts.map((prompt) => prompt.categoryId).filter(Boolean))] as string[];
+  const [selectedCategory, setSelectedCategory] = useState(categories[0] ?? "all");
   const revealRef = useRef<HTMLHeadingElement>(null);
   const revealButtonRef = useRef<HTMLButtonElement>(null);
   const t = locale === "ar"
-    ? { title: "جهّزوا من أنا؟", player: "اسم اللاعب", add: "أضف لاعباً", remove: "حذف", assign: "وزّع الشخصيات", pass: "ناولوا الجهاز إلى", viewer: "شاهد شخصيات اللاعبين الآخرين", private: "كل لاعب يرى شخصيات الآخرين فقط، ولا يرى شخصيته", reveal: "اكشف الشخصيات", hide: "أخفِ ومرّر", begin: "ابدأوا التخمين", ready: "هل الجميع مستعد؟", readyHint: "ابدؤوا بأسئلة نعم أو لا من دون كشف أي شخصية لصاحبها." }
-    : { title: "Set up Who Am I?", player: "Player name", add: "Add player", remove: "Remove", assign: "Assign identities", pass: "Pass the device to", viewer: "look at everyone else's identities", private: "Each player sees everyone else's identities, never their own", reveal: "Reveal identities", hide: "Hide and pass", begin: "Begin guessing", ready: "Everyone ready?", readyHint: "Start asking yes-or-no questions without revealing anyone's identity to its owner." };
+    ? { title: "جهّزوا من أنا؟", player: "اسم اللاعب", add: "أضف لاعباً", remove: "حذف", assign: "وزّع الشخصيات", pack: "اختاروا فئة الشخصيات", pass: "ناولوا الجهاز إلى", viewer: "شاهد شخصيات اللاعبين الآخرين", private: "كل لاعب يرى شخصيات الآخرين فقط، ولا يرى شخصيته", reveal: "اكشف الشخصيات", hide: "أخفِ ومرّر", begin: "ابدأوا التخمين", ready: "هل الجميع مستعد؟", readyHint: "ابدؤوا بأسئلة نعم أو لا من دون كشف أي شخصية لصاحبها." }
+    : { title: "Set up Who Am I?", player: "Player name", add: "Add player", remove: "Remove", assign: "Assign identities", pack: "Choose an identity pack", pass: "Pass the device to", viewer: "look at everyone else's identities", private: "Each player sees everyone else's identities, never their own", reveal: "Reveal identities", hide: "Hide and pass", begin: "Begin guessing", ready: "Everyone ready?", readyHint: "Start asking yes-or-no questions without revealing anyone's identity to its owner." };
   const valid = validateSetup(normalizeSetupNames(players).length, { min: 2, max: 12 }, locale);
   useEffect(() => {
     if (Object.keys(identities).length && !revealed && !playing) revealButtonRef.current?.focus();
@@ -27,8 +29,16 @@ export function WhoAmI({ locale, prompts = WHO_AM_I_PROMPTS, random = Math.rando
   if (playing) return <section className="panel identityPlay"><h1>{t.ready}</h1><p>{t.readyHint}</p><div className="identityRoster">{players.map((player) => <span key={player}>{player}</span>)}</div></section>;
   if (!Object.keys(identities).length) return <SetupShell title={t.title}>
     <PlayerNamesField label={t.player} names={players} value={name} placeholder={t.player} addLabel={t.add} removeLabel={t.remove} max={12} onValueChange={setName} onAdd={() => { setPlayers(normalizeSetupNames([...players, name])); setName(""); }} onRemove={(i) => setPlayers(players.filter((_, x) => x !== i))} />
+    {categories.length > 1 && <fieldset className="setupField">
+      <legend>{t.pack}</legend>
+      <div className="categoryPills">
+        {categories.map((category) => <button type="button" key={category} aria-pressed={selectedCategory === category} className={selectedCategory === category ? "active" : ""} onClick={() => setSelectedCategory(category)}>
+          {CONTENT_CATEGORY_LABELS[category as keyof typeof CONTENT_CATEGORY_LABELS]?.[locale] ?? category}
+        </button>)}
+      </div>
+    </fieldset>}
     {!valid.valid && <p role="status" className="validationMessage">{valid.message}</p>}
-    <button data-action="primary" className="primary" disabled={!valid.valid} onClick={() => setIdentities(assignPrivateIdentities(players, prompts, random))}>{t.assign}</button>
+    <button data-action="primary" className="primary" disabled={!valid.valid} onClick={() => setIdentities(assignPrivateIdentities(players, categories.length ? prompts.filter((prompt) => prompt.categoryId === selectedCategory) : prompts, random))}>{t.assign}</button>
   </SetupShell>;
   const viewer = players[index];
   const visiblePlayers = players.filter((player) => player !== viewer);

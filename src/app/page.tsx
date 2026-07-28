@@ -46,11 +46,13 @@ export default function Home() {
     }
     const syncSession = () => setSavedSession(storage ? getSessionStore(storage).read() : null);
     window.addEventListener("storage", syncSession);
-    const channel = typeof BroadcastChannel !== "undefined" ? new BroadcastChannel("bara-session") : null;
-    channel?.addEventListener("message", syncSession);
+    const channels = typeof BroadcastChannel !== "undefined"
+      ? [new BroadcastChannel("lamma-session"), new BroadcastChannel("bara-session")]
+      : [];
+    channels.forEach((channel) => channel.addEventListener("message", syncSession));
     return () => {
       window.removeEventListener("storage", syncSession);
-      channel?.close();
+      channels.forEach((channel) => channel.close());
     };
   }, []);
 

@@ -140,7 +140,7 @@ describe("SQLite room persistence", () => {
         rooms = new RoomRepository({ storage, randomInt: () => 0 });
       }
       if (round < 6) {
-        rooms.applyAction(created.code, created.hostToken, { type: "game/next-round" });
+        rooms.applyAction(created.code, created.hostToken, { type: "game/next-round", expectedRevision: rooms.get(created.code)!.gameState!.revision });
       }
     }
     expect(selected).toEqual([

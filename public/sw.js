@@ -1,4 +1,4 @@
-const CACHE = "bara-shell-v2";
+const CACHE = "lamma-shell-v1";
 const APP_SHELL = [
   "/",
   "/manifest.webmanifest",
@@ -6,6 +6,7 @@ const APP_SHELL = [
   "/icons/icon-512.png",
   "/icons/icon-maskable-512.png",
   "/icons/apple-touch-icon.png",
+  "/brand/lamma-mark.png",
 ];
 
 self.addEventListener("install", (event) => {
@@ -16,7 +17,7 @@ self.addEventListener("install", (event) => {
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((key) => key.startsWith("bara-") && key !== CACHE).map((key) => caches.delete(key))))
+      .then((keys) => Promise.all(keys.filter((key) => (key.startsWith("bara-") || key.startsWith("lamma-")) && key !== CACHE).map((key) => caches.delete(key))))
       .then(() => self.clients.claim()),
   );
 });

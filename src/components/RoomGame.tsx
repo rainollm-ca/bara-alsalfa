@@ -35,7 +35,13 @@ export function RoomGame({ locale, room, session, api, onState }: Props) {
   const [guess, setGuess] = useState("");
   const [now, setNow] = useState(() => Date.now());
   const phaseHeading = useRef<HTMLHeadingElement>(null);
-  const hostGames = new Set(["category-challenge", "charades", "forbidden-word", "rapid-fire"]);
+  const timedGames = new Set(["charades", "forbidden-word", "rapid-fire"]);
+  const teams = Array.isArray(state.teams) ? state.teams as Array<Record<string, any>> : [];
+  const activeTeam = teams.find((team) => team.id === state.activeTeamId);
+  const activeTeamMemberIds = activeTeam?.memberIds ?? activeTeam?.playerIds ?? [];
+  const canControlRound = room.selectedGame === "category-challenge" ||
+    (timedGames.has(room.selectedGame ?? "") &&
+      (room.players.length === 2 || activeTeamMemberIds.includes(room.self.id)));
   useEffect(() => phaseHeading.current?.focus(), [state.phase, state.round]);
   useEffect(() => {
     if (!state.timerEndsAt || state.phase !== "play") return;
@@ -49,8 +55,7 @@ export function RoomGame({ locale, room, session, api, onState }: Props) {
     setBusy(true);
     setError("");
     try {
-      const requiresHost = hostGames.has(room.selectedGame ?? "") ||
-        ["game/next-round", "game/return-lobby", "out-of-loop/open-vote"].includes(action.type);
+      const requiresHost = ["game/return-lobby", "out-of-loop/open-vote"].includes(action.type);
       const token = requiresHost ? session.hostToken : session.playerToken;
       if (!token) throw new Error("Host credentials are required.");
       onState((await api.action(room.code, token, action)).room);
@@ -68,8 +73,8 @@ export function RoomGame({ locale, room, session, api, onState }: Props) {
       <h1 ref={phaseHeading} tabIndex={-1}>{localized(secret.prompt ?? state.prompt, locale) || (state.phase === "result" ? t.result : room.selectedGame)}</h1>
       {state.answer && <p className="roomAnswer">{localized(state.answer, locale)}</p>}
       {Array.isArray(secret.forbidden) && <div className="forbiddenWords">{secret.forbidden.map((word: unknown, index: number) => <span key={index}>{localized(word, locale)}</span>)}</div>}
-      {state.activePlayerId && <p>{t.active}: {room.players.find((player) => player.id === state.activePlayerId)?.name}</p>}
-      {state.activeTeamId && <p>{state.activeTeamId}</p>}
+      {state.activePlayerId && <p>{t.active}: {state.activeActorName ?? room.players.find((player) => player.id === state.activePlayerId)?.name}</p>}
+      {state.activeTeamId && <p>{localized(state.activeTeamLabel, locale)}</p>}
       {state.timerEndsAt && <p className="roomTimer" data-timer-ends-at={state.timerEndsAt}>{Math.max(0, Math.ceil((state.timerEndsAt - now) / 1000))}s</p>}
 
       {room.selectedGame === "out-of-loop" && <>
@@ -115,7 +120,7 @@ export function RoomGame({ locale, room, session, api, onState }: Props) {
           <button data-action="vote-statement" data-statement-index={index} disabled={busy} key={index} onClick={() => act({ type: "two-truths/vote", index: index as 0 | 1 | 2 })}>{t.vote}: {statement}</button>)}</div>
       )}
 
-      {hostGames.has(room.selectedGame ?? "") && room.self.isHost && state.phase === "play" && (
+      {canControlRound && state.phase === "play" && (
         <div className="roomActionRow">
           {room.selectedGame === "category-challenge" ? room.players.map((player) =>
             <button data-action="correct-player" data-player-id={player.id} disabled={busy} key={player.id} onClick={() => act({ type: "category/score", correctPlayerId: player.id })}>{t.correct}: {player.name}</button>) :
@@ -130,6 +135,12 @@ export function RoomGame({ locale, room, session, api, onState }: Props) {
       )}
       {state.phase === "result" && <div className="roomResult" aria-live="polite">
         <h2>{t.result}</h2>
+        {room.selectedGame === "category-challenge" && state.lastScoredPlayerId && <p className="roundScoreSummary">
+          {room.players.find((player) => player.id === state.lastScoredPlayerId)?.name} · +{state.scoreChange} · {state.cumulativeScore}
+        </p>}
+        {timedGames.has(room.selectedGame ?? "") && state.teamScores && <p className="roundScoreSummary">
+          {localized(state.activeTeamLabel, locale)} · +{Math.max(0, Number(state.teamScores[state.activeTeamId]) - Number(state.roundStartScore))} · {state.teamScores[state.activeTeamId]}
+        </p>}
         {state.lieIndex !== undefined && <p>{t.lie}: {state.lieIndex + 1}</p>}
         {state.correctVoters && <p>{state.correctVoters.map((id: string) => room.players.find((p) => p.id === id)?.name).join(", ")}</p>}
         {state.revealedIdentity && <p>{localized(state.revealedIdentity, locale)}</p>}
@@ -141,13 +152,19 @@ export function RoomGame({ locale, room, session, api, onState }: Props) {
           {state.summary.failed ? ` · ${t.failed}: ${state.summary.failed}` : ""}
           {state.summary.violations ? ` · ${t.violation}: ${state.summary.violations}` : ""}
         </p>}
-        {room.self.isHost && <div className="roomActionRow">
-          <button data-action="next-round" disabled={busy} onClick={() => act({ type: "game/next-round" })}>{t.next}</button>
-          <button data-action="return-lobby" disabled={busy} onClick={() => act({ type: "game/return-lobby" })}>{t.lobby}</button>
-        </div>}
+        <div className="roomActionRow">
+          <button data-action="next-round" disabled={busy} onClick={() => act({ type: "game/next-round", expectedRevision: room.gameState!.revision })}>{t.next}</button>
+          {room.self.isHost && <button data-action="return-lobby" disabled={busy} onClick={() => act({ type: "game/return-lobby" })}>{t.lobby}</button>}
+        </div>
       </div>}
-      {scores && <div className="roomScores">{room.players.map((player) => <span key={player.id}>{player.name}: <b>{scores[player.id] ?? 0}</b></span>)}</div>}
-      {state.teamScores && <div className="roomScores">{Object.entries(state.teamScores).map(([team, score]) => <span key={team}>{team}: <b>{String(score)}</b></span>)}</div>}
+      {scores && !state.teamScores && <div className="roomScores">{room.players.map((player) => <span key={player.id}>{player.name}: <b>{scores[player.id] ?? 0}</b></span>)}</div>}
+      {state.teamScores && <div className="roomScores roomTeamScores">{teams.map((team) => {
+        const score = Number(state.teamScores[team.id] ?? 0);
+        const delta = team.id === state.activeTeamId ? score - Number(state.roundStartScore ?? score) : 0;
+        return <span data-team-id={team.id} className={team.id === state.activeTeamId ? "active" : ""} key={team.id}>
+          {localized(team.label, locale)}: <b>{score}</b>{delta > 0 && <small>+{delta}</small>}
+        </span>;
+      })}</div>}
       {error && <p role="alert">{error}</p>}
       {state.phase !== "result" && !room.self.isHost && secret.voted && <p>{t.waiting}</p>}
       {room.self.isHost && state.phase !== "result" && <button className="textButton" disabled={busy} onClick={() => act({ type: "game/return-lobby" })}>{t.lobby}</button>}

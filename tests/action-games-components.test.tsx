@@ -98,6 +98,13 @@ describe("timed action game components", () => {
     expect(screen.getByRole("heading", { name: "Everyone ready?" })).toBeTruthy();
   });
 
+  it("offers categorized Who Am I packs before assigning identities", () => {
+    render(<WhoAmI locale="en" />);
+    expect(screen.getByRole("button", { name: "Arab & Islamic civilization" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "World figures" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Family & fictional" })).toBeTruthy();
+  });
+
   it("runs Rapid Fire controls and preserves the round summary", async () => {
     render(<RapidFire locale="en" roundSeconds={1} roundsPerTeam={1} />);
     await enterTwoTeams("Start Rapid Fire");

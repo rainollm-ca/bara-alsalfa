@@ -55,7 +55,7 @@ describe("authoritative room game reducers", () => {
     rooms.applyAction(created.code, created.hostToken, {
       type: "category/score", correctPlayerId: null,
     });
-    const second = rooms.applyAction(created.code, created.hostToken, { type: "game/next-round" });
+    const second = rooms.applyAction(created.code, created.hostToken, { type: "game/next-round", expectedRevision: rooms.get(created.code)!.gameState!.revision });
     expect((second.gameState!.publicData as any).promptIndex).not.toBe(firstIndex);
     expect(calls.some((max) => max > 2)).toBe(true);
   });
@@ -68,17 +68,47 @@ describe("authoritative room game reducers", () => {
 
   it.each([
     ["category-challenge", { type: "category/score", correctPlayerId: "host" }],
-  ] as const)("lets only host advance authoritative %s rounds", (gameId, partial) => {
+  ] as const)("lets any connected player score authoritative %s rounds", (gameId, partial) => {
     const { rooms, created, joined, room, advance } = started(gameId);
     const hostId = room.hostPlayerId;
     const action = { ...partial, type: partial.type, ...(gameId === "category-challenge" ? { correctPlayerId: hostId } : {}) } as RoomAction;
-    expect(() => rooms.applyAction(created.code, joined[0]!.playerToken, action))
-      .toThrowError(expect.objectContaining({ code: "HOST_ONLY" }));
-    const after = rooms.applyAction(created.code, created.hostToken, action);
+    const after = rooms.applyAction(created.code, joined[0]!.playerToken, action);
     expect(after.gameState?.revision).toBe(2);
-    expect(JSON.stringify(after.gameState?.publicData)).toContain(hostId);
-    expect(() => rooms.applyAction(created.code, created.hostToken, action))
+    expect(after.gameState?.publicData).toMatchObject({
+      lastScoredPlayerId: hostId,
+      scoreChange: 1,
+      cumulativeScore: 1,
+    });
+    expect(() => rooms.applyAction(created.code, joined[0]!.playerToken, action))
       .toThrowError(expect.objectContaining({ code: "INVALID_ACTION" }));
+  });
+
+  it("lets any connected player advance a completed round while keeping lobby return host-only", () => {
+    const { rooms, created, joined, room } = started("category-challenge");
+    rooms.applyAction(created.code, joined[0]!.playerToken, {
+      type: "category/score", correctPlayerId: room.players[1]!.id,
+    });
+    const next = rooms.applyAction(created.code, joined[0]!.playerToken, { type: "game/next-round", expectedRevision: rooms.get(created.code)!.gameState!.revision });
+    expect((next.gameState!.publicData as Record<string, unknown>).round).toBe(2);
+    expect(() => rooms.applyAction(created.code, joined[0]!.playerToken, { type: "game/return-lobby" }))
+      .toThrowError(expect.objectContaining({ code: "HOST_ONLY" }));
+  });
+
+  it("rejects a delayed next-round action carrying a stale game revision", () => {
+    const { rooms, created, joined, room } = started("category-challenge");
+    rooms.applyAction(created.code, joined[0]!.playerToken, {
+      type: "category/score", correctPlayerId: room.players[1]!.id,
+    });
+    const firstResultRevision = rooms.get(created.code)!.gameState!.revision;
+    rooms.applyAction(created.code, joined[0]!.playerToken, {
+      type: "game/next-round", expectedRevision: firstResultRevision,
+    });
+    rooms.applyAction(created.code, created.playerToken, {
+      type: "category/score", correctPlayerId: room.players[0]!.id,
+    });
+    expect(() => rooms.applyAction(created.code, joined[0]!.playerToken, {
+      type: "game/next-round", expectedRevision: firstResultRevision,
+    })).toThrowError(expect.objectContaining({ code: "INVALID_ACTION" }));
   });
 
   it("rejects wrong-game actions and score/state forgery payloads", () => {
@@ -152,7 +182,7 @@ describe("authoritative room game reducers", () => {
       for (const item of joined) rooms.applyAction(created.code, item.playerToken, { type: "two-truths/vote", index: 1 });
     }
     const completed = rooms.get(created.code)!;
-    const next = rooms.applyAction(created.code, host, { type: "game/next-round" });
+    const next = rooms.applyAction(created.code, host, { type: "game/next-round", expectedRevision: completed.gameState!.revision });
     const nextState = next.gameState!.publicData as Record<string, any>;
     expect(nextState.round).toBe(2);
     const priorTurn = state.turnPlayerId ?? state.activePlayerId;
@@ -192,11 +222,57 @@ describe("authoritative room game reducers", () => {
     expect(() => rooms.applyAction(created.code, created.hostToken, { type: "timed/expire" }))
       .toThrowError(expect.objectContaining({ code: "INVALID_ACTION" }));
     expect((result.gameState!.publicData as Record<string, any>).phase).toBe("result");
-    const next = rooms.applyAction(created.code, created.hostToken, { type: "game/next-round" });
+    const next = rooms.applyAction(created.code, created.hostToken, { type: "game/next-round", expectedRevision: result.gameState!.revision });
     const nextState = next.gameState!.publicData as Record<string, any>;
     expect(nextState.activeTeamId).not.toBe(first.activeTeamId);
     expect(nextState.activeActorId).not.toBe(first.activeActorId);
     expect(nextState.timerEndsAt).toBeGreaterThan(active.timerEndsAt);
+  });
+
+  it("authorizes timed controls by active-team membership and exposes named side context", () => {
+    const { rooms, created, joined, room, advance } = started("rapid-fire", ["Noor", "Aya"]);
+    const state = room.gameState!.publicData as Record<string, any>;
+    expect(state.teams).toEqual([
+      expect.objectContaining({
+        id: "team-1", label: { en: "Noor", ar: "Noor" },
+        memberIds: [room.players[0]!.id],
+      }),
+      expect.objectContaining({
+        id: "team-2", label: { en: "Aya", ar: "Aya" },
+        memberIds: [room.players[1]!.id],
+      }),
+    ]);
+    expect(state.activeTeamLabel).toEqual({ en: "Noor", ar: "Noor" });
+    expect(state.activeActorName).toBe("Noor");
+    const guestScoredFirst = rooms.applyAction(created.code, joined[0]!.playerToken, {
+      type: "rapid-fire/mark", outcome: "correct",
+    });
+    expect((guestScoredFirst.gameState!.publicData as Record<string, any>).teamScores["team-1"]).toBe(1);
+    const scored = rooms.applyAction(created.code, created.playerToken, {
+      type: "rapid-fire/mark", outcome: "correct",
+    });
+    expect((scored.gameState!.publicData as Record<string, any>).teamScores["team-1"]).toBe(2);
+    advance(60_001);
+    expect((rooms.get(created.code)!.gameState!.publicData as Record<string, any>).phase).toBe("result");
+    const second = rooms.applyAction(created.code, joined[0]!.playerToken, { type: "game/next-round", expectedRevision: rooms.get(created.code)!.gameState!.revision });
+    expect((second.gameState!.publicData as Record<string, any>).activeTeamLabel).toEqual({ en: "Aya", ar: "Aya" });
+    const guestScored = rooms.applyAction(created.code, joined[0]!.playerToken, {
+      type: "rapid-fire/mark", outcome: "correct",
+    });
+    expect((guestScored.gameState!.publicData as Record<string, any>).teamScores["team-2"]).toBe(1);
+  });
+
+  it("uses localized side labels for teams with multiple members", () => {
+    const { room } = started("charades", ["Noor", "Aya", "Sam", "Lina"]);
+    const state = room.gameState!.publicData as Record<string, any>;
+    expect(state.teams.map((team: any) => team.label)).toEqual([
+      { en: "Team 1", ar: "الفريق ١" },
+      { en: "Team 2", ar: "الفريق ٢" },
+    ]);
+    expect(state.teams.map((team: any) => team.memberIds)).toEqual([
+      [room.players[0]!.id, room.players[2]!.id],
+      [room.players[1]!.id, room.players[3]!.id],
+    ]);
   });
 
   it("allows only the intended player to resolve Who Am I without exposing their identity", () => {
@@ -226,6 +302,27 @@ describe("authoritative room game reducers", () => {
       expect(guesser.gameState!.privateData).toBeUndefined();
     }
   });
+
+  it.each(["charades", "forbidden-word", "rapid-fire"] as const)(
+    "keeps %s secrets private from an inactive host after prompt changes",
+    (gameId) => {
+      const { rooms, created, joined, advance } = started(gameId);
+      advance(60_001);
+      rooms.get(created.code);
+      const second = rooms.applyAction(created.code, joined[0]!.playerToken, { type: "game/next-round", expectedRevision: rooms.get(created.code)!.gameState!.revision });
+      const state = second.gameState!.publicData as Record<string, any>;
+      const activeActor = second.players.find((candidate) => candidate.id === state.activeActorId)!;
+      expect(activeActor.isHost).toBe(false);
+      expect(toPlayerView(second, created.playerToken).gameState!.privateData).toBeUndefined();
+      expect(toPlayerView(second, activeActor.playerToken).gameState!.privateData).toHaveProperty("prompt");
+      rooms.applyAction(created.code, activeActor.playerToken, {
+        type: `${gameId}/mark`, outcome: "correct",
+      } as never);
+      const changed = rooms.get(created.code)!;
+      expect(toPlayerView(changed, created.playerToken).gameState!.privateData).toBeUndefined();
+      expect(toPlayerView(changed, activeActor.playerToken).gameState!.privateData).toHaveProperty("prompt");
+    },
+  );
 
   it("completes a private Two Truths submission, votes, and reveal without leaking the lie early", () => {
     const { rooms, created, joined, room } = started("two-truths-lie");

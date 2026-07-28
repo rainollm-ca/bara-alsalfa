@@ -280,6 +280,7 @@ export class RoomRepository {
       locale: input.locale ?? "ar",
       status: "lobby",
       selectedGame: null,
+      selectedCategoryIds: input.selectedCategoryIds ? [...input.selectedCategoryIds] : [],
       players: [host],
       gameState: null,
       events: [{ type: "player/joined", playerId, at: now }],
@@ -390,7 +391,8 @@ export class RoomRepository {
     if (!actor && !isHost) {
       throw new RoomError("INVALID_TOKEN", "Actor token is not valid for this room.");
     }
-    if ((action.type.startsWith("lobby/") || action.type.startsWith("game/")) && !isHost) {
+    const hostOnlyAction = action.type.startsWith("lobby/") || action.type === "game/return-lobby";
+    if (hostOnlyAction && !isHost) {
       throw new RoomError("HOST_ONLY", "Only the host can perform this action.");
     }
     const now = this.clock();
@@ -441,6 +443,9 @@ export class RoomRepository {
         });
       }
       case "game/next-round":
+        if (action.expectedRevision !== room.gameState?.revision) {
+          return this.invalidAction("This round has already changed. Refresh the room state.");
+        }
         return this.update(room, {
           gameState: nextGameRound(room, now, this.randomInt),
         });
@@ -547,7 +552,14 @@ export class RoomRepository {
       now >= state.timerEndsAt
     ) {
       return this.update(room, {
-        gameState: reduceGame(room, room.hostPlayerId, true, { type: "timed/expire" }, now, this.randomInt),
+        gameState: reduceGame(
+          room,
+          typeof state.activeActorId === "string" ? state.activeActorId : undefined,
+          false,
+          { type: "timed/expire" },
+          now,
+          this.randomInt,
+        ),
       });
     }
     return room;
@@ -635,11 +647,17 @@ export class RoomRepository {
       case "two-truths/vote":
       case "out-of-loop/open-vote":
       case "out-of-loop/guess":
+        return;
       case "game/next-round":
       case "game/return-lobby":
-        if ((action.type === "game/next-round" || action.type === "game/return-lobby") &&
-          Object.keys(action).length !== 1) {
-          return this.invalidAction("Lifecycle actions do not accept payload fields.");
+        if (action.type === "game/next-round") {
+          if (Object.keys(action).length !== 2 ||
+            !("expectedRevision" in action) ||
+            !Number.isInteger(action.expectedRevision) || Number(action.expectedRevision) < 1) {
+            return this.invalidAction("Next-round requires one valid expected revision.");
+          }
+        } else if (Object.keys(action).length !== 1) {
+          return this.invalidAction("Return-lobby does not accept payload fields.");
         }
         return;
       default:

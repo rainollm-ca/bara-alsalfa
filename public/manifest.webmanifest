@@ -1,14 +1,16 @@
 {
-  "name": "برا السالفة | Party Games",
-  "short_name": "برا السالفة",
-  "description": "ثمان ألعاب جماعية عربية وإنجليزية للأصدقاء والعائلة.",
+  "id": "/",
+  "name": "لمّة | Lamma",
+  "short_name": "لمّة",
+  "description": "ألعاب جماعية عربية وإنجليزية للعائلة والأصدقاء.",
   "lang": "ar",
   "dir": "rtl",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#f4ecde",
-  "theme_color": "#196b50",
+  "background_color": "#F8F3EA",
+  "theme_color": "#123D3A",
+  "categories": ["games", "entertainment", "family"],
   "icons": [
     {
       "src": "/icons/icon-192.png",

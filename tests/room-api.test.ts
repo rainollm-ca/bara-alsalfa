@@ -57,6 +57,45 @@ describe("room HTTP API", () => {
     expect(JSON.stringify(joined.room)).not.toContain(joined.playerToken);
   });
 
+  it("validates and server-enforces selected room content categories", async () => {
+    const invalid = await createRoom(jsonRequest("http://localhost/api/rooms", {
+      contractVersion: 1,
+      hostName: "Host",
+      gameId: "who-am-i",
+      categoryIds: ["not-a-real-pack"],
+    }));
+    expect(invalid.status).toBe(422);
+
+    const created = await (await createRoom(jsonRequest("http://localhost/api/rooms", {
+      contractVersion: 1,
+      hostName: "Host",
+      gameId: "who-am-i",
+      categoryIds: ["arab-islamic-civilization"],
+    }))).json();
+    expect(created.room.selectedCategoryIds).toEqual(["arab-islamic-civilization"]);
+    const joined = await (await joinRoom(jsonRequest(`http://localhost/api/rooms/${created.code}/join`, {
+      contractVersion: 1,
+      name: "Guest",
+    }), context(created.code))).json();
+    const started = await roomAction(jsonRequest(`http://localhost/api/rooms/${created.code}/action`, {
+      contractVersion: 1,
+      action: { type: "lobby/start" },
+    }, created.hostToken), context(created.code));
+    const payload = await started.json();
+    expect(payload.room.gameState.publicData.selectedCategoryIds).toEqual(["arab-islamic-civilization"]);
+    expect(JSON.stringify(payload.room)).not.toContain("Albert Einstein");
+    expect(joined.room.players).toHaveLength(2);
+
+    const bypass = await (await createRoom(jsonRequest("http://localhost/api/rooms", {
+      contractVersion: 1,
+      hostName: "Bypass",
+      gameId: "who-am-i",
+      privateData: { selectedCategoryIds: ["not-a-real-pack"], note: "kept" },
+    }))).json();
+    expect(bypass.room.selectedCategoryIds).toEqual([]);
+    expect(bypass.room.self.privateData).toEqual({ note: "kept" });
+  });
+
   it("returns ROOM_IN_PROGRESS for a late join but permits token reconnect", async () => {
     const created = await (await createRoom(jsonRequest("http://localhost/api/rooms", {
       contractVersion: 1, hostName: "Host", gameId: "category-challenge",

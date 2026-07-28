@@ -33,13 +33,13 @@ describe("game library UI state", () => {
 
   it("provides localized library labels", () => {
     expect(getLibraryCopy("ar")).toMatchObject({
-      libraryTitle: "اختاروا لعبتكم",
+      libraryTitle: "اللعب يجمعنا",
       localMode: "جهاز واحد",
       roomMode: "غرفة جماعية",
       play: "ابدأ اللعب",
     });
     expect(getLibraryCopy("en")).toMatchObject({
-      libraryTitle: "Choose your game",
+      libraryTitle: "Play brings us together",
       localMode: "One device",
       roomMode: "Group room",
       play: "Play now",
@@ -60,6 +60,7 @@ describe("game library UI state", () => {
 
     writeStoredLocale("en", storage);
     expect(readStoredLocale(storage)).toBe("en");
+    values.set("lamma-locale", "fr");
     values.set("bara-locale", "fr");
     expect(readStoredLocale(storage)).toBe("ar");
   });

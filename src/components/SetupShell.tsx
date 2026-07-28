@@ -62,7 +62,7 @@ export function SetupShell({ title, hint, children }: SetupShellProps) {
   return (
     <section className="panel setupShell" aria-labelledby="setup-title">
       <div className="setupHeading">
-        <p className="setupKicker">SETUP</p>
+        <p className="setupKicker">LAMMA · لمّة</p>
         <h1 id="setup-title">{title}</h1>
         {hint && <p>{hint}</p>}
       </div>

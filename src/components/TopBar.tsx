@@ -15,10 +15,10 @@ export function TopBar({ locale, onLocaleChange, onHome, showBack }: TopBarProps
   return (
     <header className="topBar">
       <button className="brandButton" type="button" onClick={onHome} aria-label={locale === "ar" ? "المكتبة" : "Game library"}>
-        <span className="brandMark">ب</span>
+        <span className="brandMark"><img src="/brand/lamma-mark.png" alt="" /></span>
         <span>
-          <strong>برا السالفة</strong>
-          <small>Game night, sorted.</small>
+          <strong>{locale === "ar" ? "لمّة" : "Lamma"}</strong>
+          <small>{locale === "ar" ? "اللعب يجمعنا" : "Play brings us together"}</small>
         </span>
       </button>
       <div className="topBarActions">

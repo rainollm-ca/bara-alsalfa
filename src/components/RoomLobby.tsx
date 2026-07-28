@@ -15,6 +15,8 @@ import {
   type RoomSession,
 } from "../rooms/client";
 import { RoomGame } from "./RoomGame";
+import { buildInviteUrl } from "../lib/invite";
+import { selectableCategories } from "../games/content/categories";
 
 const copy = {
   en: {
@@ -54,6 +56,8 @@ export function RoomLobby({ locale, gameId, initialCode, onExit, api: suppliedAp
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
   const game = GAME_CATALOG.find((candidate) => candidate.id === (room?.selectedGame ?? gameId));
+  const availableCategories = gameId ? selectableCategories(gameId) : [];
+  const [categoryIds, setCategoryIds] = useState<string[]>(() => availableCategories.map((category) => category.id));
   const [recovery, setRecovery] = useState<"expired" | "failed" | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const requestGeneration = useRef(0);
@@ -139,7 +143,10 @@ export function RoomLobby({ locale, gameId, initialCode, onExit, api: suppliedAp
         setError(t.invalid);
         return;
       }
-      const result = await api.create({ hostName: name, locale, gameId }, controller.signal);
+      const result = await api.create({
+        hostName: name, locale, gameId,
+        ...(availableCategories.length ? { categoryIds } : {}),
+      }, controller.signal);
       if (generation !== requestGeneration.current) return;
       const next = {
         code: result.code!,
@@ -212,10 +219,27 @@ export function RoomLobby({ locale, gameId, initialCode, onExit, api: suppliedAp
 
   async function share() {
     if (!session || typeof window === "undefined") return;
-    const url = new URL(window.location.href);
-    url.searchParams.set("room", session.code);
-    await navigator.clipboard?.writeText(url.toString());
-    setCopied(true);
+    const url = buildInviteUrl(session.code);
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: locale === "ar" ? "انضم إلى لمّة" : "Join my Lamma game",
+          text: locale === "ar" ? "ادخل الغرفة والعب معنا" : "Join the room and play with us",
+          url,
+        });
+        setCopied(true);
+        return;
+      } catch {
+        // The player can still copy the canonical link below.
+      }
+    }
+    try {
+      if (!navigator.clipboard) throw new Error("Clipboard unavailable");
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+    } catch {
+      setError(locale === "ar" ? `الرابط: ${url}` : `Invite link: ${url}`);
+    }
   }
 
   if (recovery) {
@@ -276,6 +300,18 @@ export function RoomLobby({ locale, gameId, initialCode, onExit, api: suppliedAp
       {game && <span className="roomGame">{game.emoji} {game.title[locale]}</span>}
       <h1>{t.title}</h1>
       <p>{t.intro}</p>
+      {tab === "create" && availableCategories.length > 0 && <fieldset className="setupField roomCategoryPicker">
+        <legend>{locale === "ar" ? "اختاروا فئات المحتوى" : "Choose content categories"}</legend>
+        <p className="fieldHint">{locale === "ar" ? "يمكنكم اختيار أكثر من فئة" : "Choose one or more packs"}</p>
+        <div className="categoryPills">
+          {availableCategories.map((category) => {
+            const selected = categoryIds.includes(category.id);
+            return <button type="button" key={category.id} aria-pressed={selected} className={selected ? "active" : ""} onClick={() => setCategoryIds((current) =>
+              selected ? (current.length > 1 ? current.filter((id) => id !== category.id) : current) : [...current, category.id]
+            )}>{category.title[locale]}</button>;
+          })}
+        </div>
+      </fieldset>}
       <div className="roomTabs" role="tablist" aria-label={locale === "ar" ? "خيارات الغرفة" : "Room options"}
         onKeyDown={(event) => {
           if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;

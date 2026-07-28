@@ -36,6 +36,7 @@ export function toPlayerView(room: Room, playerToken: string): PlayerRoomView {
     locale: room.locale,
     status: room.status,
     selectedGame: room.selectedGame,
+    selectedCategoryIds: room.selectedCategoryIds ?? [],
     players: room.players.map(publicPlayer),
     self,
     gameState: room.gameState

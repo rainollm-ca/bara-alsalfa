@@ -20,11 +20,12 @@ export type RoomEnvelope = {
 type StorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 type Fetcher = typeof fetch;
 
-export const roomSessionKey = (code: string) => `bara-room:${code.toUpperCase()}`;
+export const roomSessionKey = (code: string) => `lamma-room:${code.toUpperCase()}`;
+const legacyRoomSessionKey = (code: string) => `bara-room:${code.toUpperCase()}`;
 
 export function readRoomSession(storage: StorageLike, code: string): RoomSession | null {
   try {
-    const value: unknown = JSON.parse(storage.getItem(roomSessionKey(code)) ?? "null");
+    const value: unknown = JSON.parse(storage.getItem(roomSessionKey(code)) ?? storage.getItem(legacyRoomSessionKey(code)) ?? "null");
     if (!value || typeof value !== "object") return null;
     const session = value as Partial<RoomSession>;
     if (
@@ -44,6 +45,7 @@ export function readRoomSession(storage: StorageLike, code: string): RoomSession
 export function writeRoomSession(storage: StorageLike, session: RoomSession) {
   const normalized = { ...session, code: session.code.toUpperCase() };
   storage.setItem(roomSessionKey(normalized.code), JSON.stringify(normalized));
+  storage.setItem(legacyRoomSessionKey(normalized.code), JSON.stringify(normalized));
 }
 
 export class RoomClientError extends Error {
@@ -77,7 +79,7 @@ export function createRoomClient({
   }
 
   return {
-    create(input: { hostName: string; locale: Locale; gameId: GameId }, signal?: AbortSignal) {
+    create(input: { hostName: string; locale: Locale; gameId: GameId; categoryIds?: string[] }, signal?: AbortSignal) {
       return request("/api/rooms", {
         method: "POST",
         headers: { "content-type": "application/json" },

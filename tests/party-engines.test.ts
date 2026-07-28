@@ -23,6 +23,24 @@ import {
 } from "../src/games/engines/socialGames";
 
 describe("party game content", () => {
+  it("ships categorized bilingual action prompts and balanced Who Am I packs", () => {
+    for (const prompt of [...CHARADES_PROMPTS, ...FORBIDDEN_WORD_PROMPTS, ...RAPID_FIRE_PROMPTS, ...WHO_AM_I_PROMPTS]) {
+      expect(prompt.categoryId).toBeTruthy();
+    }
+    expect(new Set(WHO_AM_I_PROMPTS.map((prompt) => prompt.categoryId))).toEqual(expect.objectContaining({
+      size: expect.any(Number),
+    }));
+    expect(new Set(WHO_AM_I_PROMPTS.map((prompt) => prompt.categoryId)).size).toBeGreaterThanOrEqual(5);
+    const identityCategories = new Set(WHO_AM_I_PROMPTS.map((prompt) => prompt.categoryId));
+    expect(identityCategories.has("prophets-messengers")).toBe(true);
+    expect(identityCategories.has("seerah-companions")).toBe(true);
+    expect(identityCategories.has("quran-themes-stories")).toBe(true);
+    const rapidCategories = new Set(RAPID_FIRE_PROMPTS.map((prompt) => prompt.categoryId));
+    expect(rapidCategories).toEqual(expect.objectContaining({ size: expect.any(Number) }));
+    expect(rapidCategories.has("prophets-messengers")).toBe(true);
+    expect(rapidCategories.has("seerah-companions")).toBe(true);
+    expect(rapidCategories.has("quran-themes-stories")).toBe(true);
+  });
   it("provides substantial stable bilingual action-game packs", () => {
     for (const prompts of [
       CHARADES_PROMPTS,

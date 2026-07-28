@@ -274,6 +274,6 @@ describe("RoomRepository", () => {
         correctPlayerId: created.playerId,
         score: 999,
       } as never),
-    ).toThrowError(expect.objectContaining({ code: "HOST_ONLY" }));
+    ).toThrowError(expect.objectContaining({ code: "INVALID_ACTION" }));
   });
 });

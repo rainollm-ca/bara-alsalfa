@@ -43,7 +43,7 @@ async function waitForServer(url, server, timeoutMs = 30_000) {
     } catch {}
     if (response?.ok) {
       const html = await response.text();
-      assert.match(html, /برا السالفة \| Party Games/, "unexpected app served on QA port");
+      assert.match(html, /لمّة \| Lamma/, "unexpected app served on QA port");
       return;
     }
     await new Promise((resolve) => setTimeout(resolve, 200));

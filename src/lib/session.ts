@@ -1,7 +1,8 @@
 import type { GameId } from "../games/types";
 import type { Locale } from "./game";
 
-export const SESSION_KEY = "bara-local-session";
+export const SESSION_KEY = "lamma-local-session";
+export const LEGACY_SESSION_KEY = "bara-local-session";
 const SESSION_VERSION = 1;
 const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const GAME_IDS = new Set<GameId>([
@@ -108,14 +109,16 @@ export function createSessionStore(
   writerId = `writer-${Math.random().toString(36).slice(2)}`,
   now: () => number = Date.now,
 ) {
-  let seenGeneration = parseRecord(safeStorageGet(storage, SESSION_KEY))?.generation ?? 0;
+  const readStoredRecord = () => parseRecord(safeStorageGet(storage, SESSION_KEY) ?? safeStorageGet(storage, LEGACY_SESSION_KEY));
+  let seenGeneration = readStoredRecord()?.generation ?? 0;
   let blocked = false;
-  const readRecord = () => parseRecord(safeStorageGet(storage, SESSION_KEY));
+  const readRecord = readStoredRecord;
   const writeRecord = (record: SavedLocalSession | Tombstone) => {
     const written = safeStorageSet(storage, SESSION_KEY, JSON.stringify(record));
+    safeStorageSet(storage, LEGACY_SESSION_KEY, JSON.stringify(record));
     if (written && typeof BroadcastChannel !== "undefined") {
       try {
-        const channel = new BroadcastChannel("bara-session");
+        const channel = new BroadcastChannel("lamma-session");
         channel.postMessage({ generation: record.generation, revision: record.revision });
         channel.close();
       } catch {}
@@ -125,7 +128,7 @@ export function createSessionStore(
   const mutate = <T>(operation: () => T): T | Promise<T> => {
     try {
       const locks = typeof navigator !== "undefined" ? navigator.locks : undefined;
-      return locks ? locks.request("bara-local-session", operation) : operation();
+      return locks ? locks.request("lamma-local-session", operation) : operation();
     } catch {
       return operation();
     }

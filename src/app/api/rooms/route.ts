@@ -12,6 +12,7 @@ import {
 import { ROOM_CONTRACT_VERSION } from "../../../rooms/contracts";
 import { toPlayerView } from "../../../rooms/playerView";
 import { RoomError } from "../../../rooms/repository";
+import { validCategorySelection } from "../../../games/content/categories";
 
 export const dynamic = "force-dynamic";
 
@@ -36,10 +37,20 @@ export async function POST(request: Request) {
     if (body.gameId !== undefined && !isGameId(body.gameId)) {
       throw new RoomError("INVALID_PAYLOAD", "Unknown game.");
     }
+    if (body.categoryIds !== undefined &&
+      (!body.gameId || !isGameId(body.gameId) || !validCategorySelection(body.gameId, body.categoryIds))) {
+      throw new RoomError("INVALID_PAYLOAD", "Choose valid content categories for this game.");
+    }
+    const privateData = body.privateData && typeof body.privateData === "object" && !Array.isArray(body.privateData)
+      ? Object.fromEntries(Object.entries(body.privateData).filter(([key]) => key !== "selectedCategoryIds"))
+      : body.privateData;
     const created = roomRepository().create({
       hostName: body.hostName as string,
       ...(body.locale ? { locale: body.locale as "ar" | "en" } : {}),
-      ...(body.privateData === undefined ? {} : { privateData: body.privateData as never }),
+      ...(body.categoryIds === undefined ? {} : { selectedCategoryIds: body.categoryIds as string[] }),
+      ...(body.privateData === undefined && body.categoryIds === undefined ? {} : {
+        privateData: privateData as never,
+      }),
     });
     if (body.gameId) {
       roomRepository().applyAction(created.code, created.hostToken, {

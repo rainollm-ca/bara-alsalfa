@@ -68,6 +68,7 @@ export type Room = Readonly<{
   locale: Locale;
   status: RoomStatus;
   selectedGame: GameId | null;
+  selectedCategoryIds?: readonly string[];
   players: readonly RoomPlayer[];
   gameState: RoomGameState | null;
   events: readonly RoomEvent[];
@@ -80,6 +81,7 @@ export type Room = Readonly<{
 export type CreateRoomInput = Readonly<{
   hostName: string;
   locale?: Locale;
+  selectedCategoryIds?: readonly string[];
   privateData?: JsonValue;
 }>;
 
@@ -96,7 +98,7 @@ export type HostRoomAction =
   | Readonly<{ type: "lobby/remove-player"; playerId: string }>;
 
 export type GameRoomAction =
-  | Readonly<{ type: "game/next-round" }>
+  | Readonly<{ type: "game/next-round"; expectedRevision: number }>
   | Readonly<{ type: "game/return-lobby" }>
   | Readonly<{ type: "category/score"; correctPlayerId: string | null }>
   | Readonly<{ type: "charades/mark"; outcome: "correct" | "skip" | "failed" }>
@@ -134,6 +136,7 @@ export type PlayerRoomView = Readonly<{
   locale: Locale;
   status: RoomStatus;
   selectedGame: GameId | null;
+  selectedCategoryIds: readonly string[];
   players: readonly PublicRoomPlayer[];
   self: SelfRoomPlayer;
   gameState: Readonly<{
